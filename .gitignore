@@ -1,0 +1,76 @@
+# Dependencies
+/node_modules
+/package-lock.json
+/yarn.lock
+/pnpm-lock.yaml
+
+# Build outputs
+/dist
+/build
+/.build
+/.next
+/out
+
+# Environment variables
+.env
+.env.local
+.env.development
+.env.test
+.env.production
+.env*.local
+
+# Upload directory - do not ignore structure, but ignore contents
+/src/upload/*
+!/src/upload/.gitkeep
+
+# Logs
+/logs
+*.log
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+pnpm-debug.log*
+
+# IDE and editor files
+/.idea
+/.vscode
+*.sublime-project
+*.sublime-workspace
+.project
+.classpath
+.c9/
+*.launch
+.settings/
+*.suo
+*.ntvs*
+*.njsproj
+*.sln
+*.sw?
+.DS_Store
+
+# Testing
+/coverage
+/.nyc_output
+/cypress/videos/
+/cypress/screenshots/
+
+# Temporary files
+*.temp
+*.tmp
+.cache
+/temp
+/tmp
+
+# MongoDB local data
+/data/db
+
+# Compiled JavaScript files (if using TypeScript)
+*.js
+*.js.map
+*.d.ts
+!jest.config.js
+!ecosystem.config.js
+
+# Misc
+.DS_Store
+Thumbs.db
