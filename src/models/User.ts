@@ -10,7 +10,7 @@ export interface IUser extends Document {
     createdAt: Date;
     updatedAt: Date;
 
-    
+
     comparePassword(candidatePassword: string): Promise<boolean>;
     toJSON(): Partial<IUser>;
 }
@@ -54,8 +54,6 @@ const UserSchema = new Schema<IUser>(
     }
 );
 
-// Index for faster email lookups
-UserSchema.index({ email: 1 });
 
 // Pre-save middleware to hash password
 UserSchema.pre<IUser>('save', async function (next) {

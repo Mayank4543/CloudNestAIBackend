@@ -4,12 +4,12 @@
   "engines": {
     "node": ">=18.0.0"
   },
+  "main": "dist/server.js",
   "scripts": {
-    "start": "node dist/server.js",
-    "heroku-postbuild": "npm run build",
-    "dev": "ts-node server.ts",
-    "watch": "ts-node-dev --respawn server.ts",
+    "dev": "ts-node src/server.ts",
+    "watch": "ts-node-dev --respawn src/server.ts",
     "build": "tsc",
+    "start": "node dist/server.js",
     "postbuild": "echo 'Build completed successfully'",
     "test": "jest",
     "test:watch": "jest --watch",
