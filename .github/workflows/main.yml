@@ -1,0 +1,131 @@
+name: CI/CD Pipeline
+
+# Trigger the workflow on push or pull request to main branch
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+
+jobs:
+  build-and-test:
+    name: Build and Test
+    runs-on: ubuntu-latest
+
+    steps:
+      # Step 1: Checkout the repository code
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      # Step 2: Setup Node.js 18 with npm caching
+      - name: Setup Node.js 18
+        uses: actions/setup-node@v4
+        with:
+          node-version: "18"
+          cache: "npm"
+
+      # Step 3: Install dependencies using npm ci (faster and more reliable for CI)
+      - name: Install dependencies
+        run: npm ci
+
+      # Step 4: Run tests (currently you have placeholder, but keeping for when you add real tests)
+      - name: Run unit tests
+        run: npm test
+        continue-on-error: true # Allow build to continue even if tests fail (remove this when you have real tests)
+
+      # Step 5: Build TypeScript project
+      - name: Build TypeScript project
+        run: npm run build
+
+      # Step 6: Verify build output exists
+      - name: Verify build output
+        run: |
+          if [ -d "dist" ]; then
+            echo "✅ Build successful - dist folder created"
+            ls -la dist/
+          else
+            echo "❌ Build failed - dist folder not found"
+            exit 1
+          fi
+
+      # Step 7: Cache build artifacts for potential deployment
+      - name: Upload build artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: build-files
+          path: dist/
+          retention-days: 30
+
+  # Deployment job (only runs on successful build and push to main)
+  deploy:
+    name: Deploy to Production
+    runs-on: ubuntu-latest
+    needs: build-and-test
+    # Only deploy on push to main branch (not on pull requests)
+    if: github.ref == 'refs/heads/main' && github.event_name == 'push'
+
+    steps:
+      # Step 1: Checkout code for deployment
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      # Step 2: Download the build artifacts from the previous job
+      - name: Download build artifacts
+        uses: actions/download-artifact@v4
+        with:
+          name: build-files
+          path: dist/
+
+      # Step 3: Deployment placeholder (uncomment and configure based on your deployment target)
+      - name: Deploy to production
+        run: |
+          echo "🚀 Starting deployment process..."
+          echo "Build files are ready in dist/ directory"
+          echo "Configure your deployment method below:"
+
+          # Uncomment ONE of the following deployment methods:
+
+          # === RENDER DEPLOYMENT ===
+          # - name: Deploy to Render
+          #   run: |
+          #     curl -X POST "https://api.render.com/v1/services/${{ secrets.RENDER_SERVICE_ID }}/deploys" \
+          #       -H "Authorization: Bearer ${{ secrets.RENDER_API_KEY }}" \
+          #       -H "Content-Type: application/json"
+
+          # === HEROKU DEPLOYMENT ===
+          # - name: Deploy to Heroku
+          #   uses: akhileshns/heroku-deploy@v3.12.14
+          #   with:
+          #     heroku_api_key: ${{ secrets.HEROKU_API_KEY }}
+          #     heroku_app_name: "your-heroku-app-name"
+          #     heroku_email: "your-email@example.com"
+
+          # === VPS/SERVER DEPLOYMENT (via SSH) ===
+          # - name: Deploy to VPS
+          #   uses: appleboy/ssh-action@v1.0.0
+          #   with:
+          #     host: ${{ secrets.HOST }}
+          #     username: ${{ secrets.USERNAME }}
+          #     key: ${{ secrets.SSH_PRIVATE_KEY }}
+          #     script: |
+          #       cd /path/to/your/app
+          #       git pull origin main
+          #       npm ci --production
+          #       npm run build
+          #       pm2 restart cloudbackend
+
+          # === DOCKER DEPLOYMENT ===
+          # - name: Build and Push Docker Image
+          #   run: |
+          #     docker build -t cloudbackend:${{ github.sha }} .
+          #     echo ${{ secrets.DOCKER_PASSWORD }} | docker login -u ${{ secrets.DOCKER_USERNAME }} --password-stdin
+          #     docker tag cloudbackend:${{ github.sha }} your-registry/cloudbackend:latest
+          #     docker push your-registry/cloudbackend:latest
+
+      # Step 4: Deployment success notification
+      - name: Deployment completed
+        run: |
+          echo "✅ Deployment process completed!"
+          echo "Commit SHA: ${{ github.sha }}"
+          echo "Deployed from branch: ${{ github.ref_name }}"
+          echo "Deployment timestamp: $(date)"

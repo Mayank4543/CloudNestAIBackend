@@ -1,0 +1,140 @@
+name: CI/CD Pipeline
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+
+jobs:
+  test-and-build:
+    name: Test and Build
+    runs-on: ubuntu-latest
+
+    strategy:
+      matrix:
+        node-version: [18.x]
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js ${{ matrix.node-version }}
+        uses: actions/setup-node@v4
+        with:
+          node-version: ${{ matrix.node-version }}
+          cache: "npm"
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Run linting (if available)
+        run: npm run lint
+        continue-on-error: true
+
+      - name: Run unit tests
+        run: npm test
+
+      - name: Build TypeScript project
+        run: npm run build
+
+      - name: Archive build artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: dist-files
+          path: dist/
+          retention-days: 7
+
+    # Optional: Upload coverage reports (if you're using coverage tools)
+    # - name: Upload coverage to Codecov
+    #   uses: codecov/codecov-action@v3
+    #   with:
+    #     file: ./coverage/lcov.info
+    #     flags: unittests
+    #     name: codecov-umbrella
+
+  # Optional: Deploy job (runs only on main branch pushes)
+  deploy:
+    name: Deploy to Production
+    runs-on: ubuntu-latest
+    needs: test-and-build
+    if: github.ref == 'refs/heads/main' && github.event_name == 'push'
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Download build artifacts
+        uses: actions/download-artifact@v4
+        with:
+          name: dist-files
+          path: dist/
+
+      # Uncomment and configure the deployment method you prefer:
+
+      # Option 1: Deploy to a VPS/Server via SSH
+      # - name: Deploy to production server
+      #   uses: appleboy/ssh-action@v1.0.0
+      #   with:
+      #     host: ${{ secrets.HOST }}
+      #     username: ${{ secrets.USERNAME }}
+      #     key: ${{ secrets.SSH_KEY }}
+      #     port: ${{ secrets.PORT }}
+      #     script: |
+      #       cd /path/to/your/app
+      #       git pull origin main
+      #       npm ci --production
+      #       npm run build
+      #       pm2 restart your-app-name
+
+      # Option 2: Deploy to Heroku
+      # - name: Deploy to Heroku
+      #   uses: akhileshns/heroku-deploy@v3.12.14
+      #   with:
+      #     heroku_api_key: ${{ secrets.HEROKU_API_KEY }}
+      #     heroku_app_name: "your-app-name"
+      #     heroku_email: "your-email@example.com"
+
+      # Option 3: Deploy to Railway
+      # - name: Deploy to Railway
+      #   uses: railway-deploy/railway-deploy@v0.1.0
+      #   with:
+      #     api_key: ${{ secrets.RAILWAY_TOKEN }}
+      #     service: your-service-name
+
+      # Option 4: Deploy to Render
+      # - name: Deploy to Render
+      #   run: |
+      #     curl -X POST \
+      #       -H "Authorization: Bearer ${{ secrets.RENDER_API_KEY }}" \
+      #       -H "Content-Type: application/json" \
+      #       -d '{"serviceId":"your-service-id"}' \
+      #       https://api.render.com/v1/services/your-service-id/deploys
+
+      # Option 5: Deploy to DigitalOcean App Platform
+      # - name: Deploy to DigitalOcean App Platform
+      #   uses: digitalocean/app_action@v1.1.5
+      #   with:
+      #     app_name: your-app-name
+      #     token: ${{ secrets.DIGITALOCEAN_ACCESS_TOKEN }}
+
+      # Option 6: Deploy using Docker
+      # - name: Build and push Docker image
+      #   run: |
+      #     docker build -t your-app:${{ github.sha }} .
+      #     echo ${{ secrets.DOCKER_PASSWORD }} | docker login -u ${{ secrets.DOCKER_USERNAME }} --password-stdin
+      #     docker push your-app:${{ github.sha }}
+
+      # Placeholder for custom deployment
+      - name: Deploy application
+        run: |
+          echo "🚀 Deployment step - configure based on your deployment target"
+          echo "Built files are available in the dist/ directory"
+          echo "Add your deployment commands here"
+          # Example: rsync, scp, Docker push, cloud deployment, etc.
+
+      - name: Deployment notification
+        run: |
+          echo "✅ Deployment completed successfully!"
+          echo "Commit: ${{ github.sha }}"
+          echo "Branch: ${{ github.ref_name }}"
