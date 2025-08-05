@@ -6,9 +6,9 @@ const path = require("path");
 
 // Try multiple possible paths for the compiled server
 const possiblePaths = [
-  path.join(__dirname, "dist", "server.js"),           // Standard path
-  path.join(__dirname, "..", "dist", "server.js"),     // If running from subdirectory
-  path.join(process.cwd(), "dist", "server.js"),       // Using process working directory
+  path.join(__dirname, "dist", "server.js"), // Standard path
+  path.join(__dirname, "..", "dist", "server.js"), // If running from subdirectory
+  path.join(process.cwd(), "dist", "server.js"), // Using process working directory
 ];
 
 let distServerPath = null;
@@ -33,8 +33,8 @@ if (distServerPath) {
 } else {
   console.error("❌ Compiled server not found!");
   console.log("Searched paths:");
-  possiblePaths.forEach(p => console.log("  ❌", p));
-  
+  possiblePaths.forEach((p) => console.log("  ❌", p));
+
   console.log("Current directory contents:");
 
   try {
