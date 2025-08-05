@@ -12,7 +12,7 @@ describe('Health Check', () => {
     });
 
     it('should have valid package.json', () => {
-        const pkg = require('../package.json');
+        const pkg = require('package.json')
         expect(pkg.name).toBe('cloudbackend');
         expect(pkg.version).toBeDefined();
     });
