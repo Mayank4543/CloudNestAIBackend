@@ -1,76 +1,100 @@
 # Dependencies
-/node_modules
-/package-lock.json
-/yarn.lock
-/pnpm-lock.yaml
-
-# Build outputs
-/dist
-/build
-/.build
-/.next
-/out
+node_modules/
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
 
 # Environment variables
 .env
 .env.local
-.env.development
-.env.test
-.env.production
-.env*.local
+.env.development.local
+.env.test.local
+.env.production.local
 
-# Upload directory - do not ignore structure, but ignore contents
-/src/upload/*
-!/src/upload/.gitkeep
+# Build outputs
+dist/
+build/
+*.tsbuildinfo
 
 # Logs
-/logs
+logs
 *.log
-npm-debug.log*
-yarn-debug.log*
-yarn-error.log*
-pnpm-debug.log*
 
-# IDE and editor files
-/.idea
-/.vscode
-*.sublime-project
-*.sublime-workspace
-.project
-.classpath
-.c9/
-*.launch
-.settings/
-*.suo
-*.ntvs*
-*.njsproj
-*.sln
-*.sw?
+# Runtime data
+pids
+*.pid
+*.seed
+*.pid.lock
+
+# Coverage directory used by tools like istanbul
+coverage/
+*.lcov
+
+# nyc test coverage
+.nyc_output
+
+# Dependency directories
+jspm_packages/
+
+# Optional npm cache directory
+.npm
+
+# Optional eslint cache
+.eslintcache
+
+# Optional REPL history
+.node_repl_history
+
+# Output of 'npm pack'
+*.tgz
+
+# Yarn Integrity file
+.yarn-integrity
+
+# parcel-bundler cache (https://parceljs.org/)
+.cache
+.parcel-cache
+
+# next.js build output
+.next
+
+# nuxt.js build output
+.nuxt
+
+# vuepress build output
+.vuepress/dist
+
+# Serverless directories
+.serverless
+
+# FuseBox cache
+.fusebox/
+
+# DynamoDB Local files
+.dynamodb/
+
+# TernJS port file
+.tern-port
+
+# Stores VSCode versions used for testing VSCode extensions
+.vscode-test
+
+# IDE files
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+
+# OS generated files
 .DS_Store
-
-# Testing
-/coverage
-/.nyc_output
-/cypress/videos/
-/cypress/screenshots/
+.DS_Store?
+._*
+.Spotlight-V100
+.Trashes
+ehthumbs.db
+Thumbs.db
 
 # Temporary files
-*.temp
 *.tmp
-.cache
-/temp
-/tmp
-
-# MongoDB local data
-/data/db
-
-# Compiled JavaScript files (if using TypeScript)
-*.js
-*.js.map
-*.d.ts
-!jest.config.js
-!ecosystem.config.js
-
-# Misc
-.DS_Store
-Thumbs.db
+*.temp
