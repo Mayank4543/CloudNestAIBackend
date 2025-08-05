@@ -12,7 +12,7 @@ const router = express.Router();
  * @body { name, email, password }
  * 
  */
-router.get('/test',(req, res) => {
+router.get('/test', (req, res) => {
     res.status(200).json({
         success: true,
         message: 'Test route is working'
@@ -35,6 +35,14 @@ router.post('/register', AuthController.register);
  * @body { email, password }
  */
 router.post('/login', AuthController.login);
+
+/**
+ * @route POST /api/auth/google
+ * @desc Google OAuth login
+ * @access Public
+ * @body { token }
+ */
+router.post('/google', AuthController.googleLogin);
 
 /**
  * @route GET /api/auth/profile

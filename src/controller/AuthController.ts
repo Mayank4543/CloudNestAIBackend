@@ -1,5 +1,6 @@
 import { Request, Response } from 'express';
 import jwt from 'jsonwebtoken';
+import { OAuth2Client } from 'google-auth-library';
 import User, { IUser } from '../models/User';
 
 // Interface for registration request
@@ -15,6 +16,11 @@ interface LoginRequest {
     password: string;
 }
 
+// Interface for Google login request
+interface GoogleLoginRequest {
+    token: string;
+}
+
 // Interface for JWT payload
 interface JWTPayload {
     userId: string;
@@ -23,6 +29,8 @@ interface JWTPayload {
 }
 
 export class AuthController {
+    // Initialize Google OAuth client
+    private static googleClient = new OAuth2Client(process.env.GOOGLE_CLIENT_ID);
 
     /**
      * Generate JWT token for user
@@ -219,6 +227,110 @@ export class AuthController {
             res.status(500).json({
                 success: false,
                 message: 'Internal server error'
+            });
+        }
+    }
+
+    /**
+     * Google OAuth login
+     * @route POST /api/auth/google
+     * @body { token }
+     */
+    public static async googleLogin(req: Request, res: Response): Promise<void> {
+        try {
+            const { token }: GoogleLoginRequest = req.body;
+
+            // Validate required fields
+            if (!token) {
+                res.status(400).json({
+                    success: false,
+                    message: 'Google token is required'
+                });
+                return;
+            }
+
+            // Verify the Google token
+            const ticket = await AuthController.googleClient.verifyIdToken({
+                idToken: token,
+                audience: process.env.GOOGLE_CLIENT_ID
+            });
+
+            const payload = ticket.getPayload();
+            if (!payload) {
+                res.status(401).json({
+                    success: false,
+                    message: 'Invalid Google token'
+                });
+                return;
+            }
+
+            // Extract user information from Google payload
+            const { email, name, picture } = payload;
+
+            if (!email || !name) {
+                res.status(400).json({
+                    success: false,
+                    message: 'Email and name are required from Google profile'
+                });
+                return;
+            }
+
+            // Check if user already exists
+            let user = await User.findOne({ email: email.toLowerCase() });
+
+            if (user) {
+                // User exists, update profile picture if provided
+                if (picture && user.picture !== picture) {
+                    user.picture = picture;
+                    await user.save();
+                }
+            } else {
+                // Create new user
+                user = new User({
+                    name: name.trim(),
+                    email: email.toLowerCase().trim(),
+                    picture: picture || undefined
+                });
+                await user.save();
+            }
+
+            // Generate JWT token
+            const jwtToken = AuthController.generateToken(user);
+
+            // Return success response
+            res.status(200).json({
+                success: true,
+                message: 'Google login successful',
+                data: {
+                    token: jwtToken,
+                    user: {
+                        _id: user._id,
+                        name: user.name,
+                        email: user.email,
+                        picture: user.picture
+                    }
+                }
+            });
+
+        } catch (error) {
+            console.error('Google login error:', error);
+
+            // Handle specific Google Auth errors
+            if (error instanceof Error) {
+                if (error.message.includes('Token used too early') ||
+                    error.message.includes('Token used too late') ||
+                    error.message.includes('Invalid token signature')) {
+                    res.status(401).json({
+                        success: false,
+                        message: 'Invalid or expired Google token'
+                    });
+                    return;
+                }
+            }
+
+            res.status(500).json({
+                success: false,
+                message: 'Internal server error during Google login'
             });
         }
     }

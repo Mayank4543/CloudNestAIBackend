@@ -6,7 +6,8 @@ export interface IUser extends Document {
     _id: mongoose.Types.ObjectId;
     name: string;
     email: string;
-    password: string;
+    password?: string; // Optional for Google OAuth users
+    picture?: string; // Profile picture URL for Google OAuth users
     createdAt: Date;
     updatedAt: Date;
 
@@ -43,9 +44,14 @@ const UserSchema = new Schema<IUser>(
         },
         password: {
             type: String,
-            required: [true, 'Password is required'],
+            required: false, // Not required for Google OAuth users
             minlength: [6, 'Password must be at least 6 characters long'],
             select: false // Don't include password in queries by default
+        },
+        picture: {
+            type: String,
+            required: false, // Optional profile picture URL
+            trim: true
         }
     },
     {
@@ -57,8 +63,8 @@ const UserSchema = new Schema<IUser>(
 
 // Pre-save middleware to hash password
 UserSchema.pre<IUser>('save', async function (next) {
-    // Only hash the password if it's been modified (or is new)
-    if (!this.isModified('password')) {
+    // Only hash the password if it exists and has been modified (or is new)
+    if (!this.password || !this.isModified('password')) {
         return next();
     }
 
@@ -75,6 +81,10 @@ UserSchema.pre<IUser>('save', async function (next) {
 // Instance method to compare password
 UserSchema.methods.comparePassword = async function (candidatePassword: string): Promise<boolean> {
     try {
+        // If no password is set (e.g., Google OAuth user), return false
+        if (!this.password) {
+            return false;
+        }
         return await bcrypt.compare(candidatePassword, this.password);
     } catch (error) {
         throw new Error('Password comparison failed');
