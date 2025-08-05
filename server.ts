@@ -95,12 +95,18 @@ app.use((error: unknown, req: express.Request, res: express.Response, next: expr
 
 // MongoDB connection with retry logic
 const connectToMongoDB = async (retryCount = 0): Promise<void> => {
-    const maxRetries = 5;
+    const maxRetries = 3; // Reduced retries for faster startup
 
     try {
         console.log(`Attempting to connect to MongoDB... (Attempt ${retryCount + 1})`);
 
-        await mongoose.connect(MONGODB_URI);
+        // Add connection timeout for production
+        const connectionOptions = NODE_ENV === 'production' ? {
+            serverSelectionTimeoutMS: 10000, // 10 second timeout
+            connectTimeoutMS: 10000,
+        } : {};
+
+        await mongoose.connect(MONGODB_URI, connectionOptions);
 
         console.log('✅ Successfully connected to MongoDB');
         console.log('📋 To use the database features, you need MongoDB running at:', MONGODB_URI);
@@ -131,8 +137,8 @@ const connectToMongoDB = async (retryCount = 0): Promise<void> => {
         }
 
         if (retryCount < maxRetries) {
-            console.log(`⏳ Retrying in 5 seconds...`);
-            setTimeout(() => connectToMongoDB(retryCount + 1), 5000);
+            console.log(`⏳ Retrying in 3 seconds...`);
+            setTimeout(() => connectToMongoDB(retryCount + 1), 3000); // Reduced timeout
         } else {
             console.error('💥 Max retry attempts reached');
             throw error;
@@ -143,25 +149,37 @@ const connectToMongoDB = async (retryCount = 0): Promise<void> => {
 // Start server function
 const startServer = async (): Promise<void> => {
     try {
+        // Add production environment debugging
+        if (NODE_ENV === 'production') {
+            console.log('🏭 Production Environment Detected');
+            console.log('Environment variables check:');
+            console.log('  PORT:', PORT);
+            console.log('  NODE_ENV:', NODE_ENV);
+            console.log('  MONGODB_URI:', MONGODB_URI ? '✅ Set' : '❌ Missing');
+            console.log('  CORS_ORIGIN:', process.env.CORS_ORIGIN || 'Using defaults');
+        }
+
         // Start Express server first
-        const server = app.listen(PORT, () => {
+        const server = app.listen(Number(PORT), '0.0.0.0', () => {
             console.log('🚀 Server Configuration:');
             console.log(`   Environment: ${NODE_ENV}`);
             console.log(`   Port: ${PORT}`);
             console.log(`   MongoDB URI: ${MONGODB_URI.replace(/\/\/.*@/, '//***:***@')}`);
             console.log(`   CORS Origins: ${corsOptions.origin}`);
-            console.log(`\n🌟 CloudNest AI Backend server is running on http://localhost:${PORT}`);
-            console.log(`📁 File API available at: http://localhost:${PORT}/api/files`);
-            console.log(`🔍 Health check: http://localhost:${PORT}/health`);
+            console.log(`\n🌟 CloudNest AI Backend server is running on port ${PORT}`);
+            console.log(`📁 File API available at: /api/files`);
+            console.log(`🔍 Health check: /health`);
+            console.log(`🔐 Auth API available at: /api/auth`);
         });
 
-        // Connect to MongoDB in the background
+        // Connect to MongoDB in the background (don't crash if it fails)
         connectToMongoDB().then(() => {
             console.log('✅ MongoDB connection established, all features are now available');
         }).catch(error => {
             const errorMessage = error instanceof Error ? error.message : 'Unknown error';
             console.error('❌ Final MongoDB connection attempt failed:', errorMessage);
             console.warn('⚠️ Server is running but database features are not available');
+            console.warn('⚠️ This is normal if MongoDB credentials are not configured');
         });
 
         // Handle server errors
@@ -201,6 +219,25 @@ const startServer = async (): Promise<void> => {
         // Setup graceful shutdown handlers
         process.on('SIGTERM', () => gracefulShutdown('SIGTERM'));
         process.on('SIGINT', () => gracefulShutdown('SIGINT'));
+
+        // Handle uncaught exceptions (prevent crashes in production)
+        process.on('uncaughtException', (error) => {
+            console.error('❌ Uncaught Exception:', error);
+            if (NODE_ENV === 'production') {
+                console.error('⚠️ Continuing in production mode...');
+            } else {
+                process.exit(1);
+            }
+        });
+
+        process.on('unhandledRejection', (reason, promise) => {
+            console.error('❌ Unhandled Rejection at:', promise, 'reason:', reason);
+            if (NODE_ENV === 'production') {
+                console.error('⚠️ Continuing in production mode...');
+            } else {
+                process.exit(1);
+            }
+        });
 
     } catch (error) {
         console.error('❌ Failed to start server:', error);
