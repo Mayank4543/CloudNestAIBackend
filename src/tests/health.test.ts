@@ -51,9 +51,9 @@ describe('Application Structure', () => {
         const fs = require('fs');
         const path = require('path');
         const tsConfigPath = path.join(__dirname, '../../tsconfig.json');
-        
+
         expect(fs.existsSync(tsConfigPath)).toBe(true);
-        
+
         // Read the file content as string and verify it contains expected configurations
         const tsConfigContent = fs.readFileSync(tsConfigPath, 'utf8');
         expect(tsConfigContent).toContain('compilerOptions');
