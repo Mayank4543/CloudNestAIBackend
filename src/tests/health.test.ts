@@ -1,8 +1,7 @@
-// # Basic Health Check Test
-// # This is a simple test to verify your server starts correctly
+// Basic Health Check Test
+// This is a simple test to verify your server starts correctly
 
-import request from 'supertest';
-import { describe, it, expect, beforeAll, afterAll } from '@jest/globals';
+import { describe, it, expect } from '@jest/globals';
 
 // Mock the server for testing
 describe('Health Check', () => {
@@ -12,7 +11,7 @@ describe('Health Check', () => {
     });
 
     it('should have valid package.json', () => {
-        const pkg = require('package.json')
+        const pkg = require('../../package.json');
         expect(pkg.name).toBe('cloudbackend');
         expect(pkg.version).toBeDefined();
     });
