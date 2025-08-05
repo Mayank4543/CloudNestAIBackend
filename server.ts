@@ -4,6 +4,7 @@ import cors from 'cors';
 import dotenv from 'dotenv';
 import path from 'path';
 import fileRouter from './src/routes/fileRouter';
+import authRoutes from './src/routes/authRoutes';
 
 // Load environment variables from .env file
 dotenv.config();
@@ -53,6 +54,9 @@ app.get('/health', (req, res) => {
 
 // Mount file routes
 app.use('/api/files', fileRouter);
+
+// Mount authentication routes
+app.use('/api/auth', authRoutes);
 
 // 404 handler for undefined routes
 app.use((req, res) => {

@@ -1,3 +1,4 @@
 import fileRoutes from './fileRoutes';
+import authRoutes from './authRoutes';
 
-export { fileRoutes };
+export { fileRoutes, authRoutes };
