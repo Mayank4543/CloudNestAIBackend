@@ -10,7 +10,22 @@ const router = express.Router();
  * @desc Register a new user
  * @access Public
  * @body { name, email, password }
+ * 
  */
+router.get('/test',(req, res) => {
+    res.status(200).json({
+        success: true,
+        message: 'Test route is working'
+    });
+})
+
+/**
+ * @route POST /api/auth/logout
+ * @desc Logout user (client-side token removal)
+ * @access Private (requires JWT token)
+ * @headers Authorization: Bearer <token>
+ */
+
 router.post('/register', AuthController.register);
 
 /**
