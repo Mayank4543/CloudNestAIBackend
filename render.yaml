@@ -2,8 +2,8 @@ services:
   - type: web
     env: node
     name: cloudnest-ai-backend
-    buildCommand: npm install && npm run build && ls -la dist/
-    startCommand: npm start
+    buildCommand: chmod +x build-verify.sh && ./build-verify.sh
+    startCommand: node server.js
     plan: free
     healthCheckPath: /health
     envVars:

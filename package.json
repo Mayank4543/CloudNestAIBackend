@@ -1,12 +1,12 @@
 {
   "name": "cloudbackend",
   "version": "1.0.0",
-  "main": "dist/server.js",
   "engines": {
     "node": ">=18.0.0"
   },
   "scripts": {
     "start": "node dist/server.js",
+    "heroku-postbuild": "npm run build",
     "dev": "ts-node server.ts",
     "watch": "ts-node-dev --respawn server.ts",
     "build": "tsc",
