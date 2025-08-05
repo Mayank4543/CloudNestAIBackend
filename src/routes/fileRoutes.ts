@@ -2,6 +2,7 @@ import express from 'express';
 import multer from 'multer';
 import path from 'path';
 import { FileController } from '../controller/FileController';
+import { authenticateToken } from '../middleware/authMiddleware';
 
 // Create router
 const router = express.Router();
@@ -38,27 +39,28 @@ const upload = multer({
 });
 
 // Routes - Define specific routes first, parameterized routes last
+// All routes are protected with authenticateToken middleware
 
-// Handle file upload
-router.post('/upload', upload.single('file'), FileController.uploadFile);
+// Handle file upload (protected)
+router.post('/upload', authenticateToken, upload.single('file'), FileController.uploadFile);
 
-// Get all files 
-router.get('/', FileController.getAllFiles);
+// Get all files (protected)
+router.get('/', authenticateToken, FileController.getAllFiles);
 
-// Search files
-router.get('/search', FileController.searchFiles);
+// Search files (protected)
+router.get('/search', authenticateToken, FileController.searchFiles);
 
-// Get file statistics
-router.get('/stats', FileController.getFileStats);
+// Get file statistics (protected)
+router.get('/stats', authenticateToken, FileController.getFileStats);
 
-// Get a specific file by ID
-router.get('/:id', FileController.getFileById);
+// Get a specific file by ID (protected)
+router.get('/:id', authenticateToken, FileController.getFileById);
 
-// Delete a file by ID
-router.delete('/:id', FileController.deleteFile);
+// Delete a file by ID (protected)
+router.delete('/:id', authenticateToken, FileController.deleteFile);
 
-// Update file tags
-router.put('/:id/tags', FileController.updateFileTags);
+// Update file tags (protected)
+router.put('/:id/tags', authenticateToken, FileController.updateFileTags);
 
 // Error handling middleware for multer
 router.use((error: any, req: express.Request, res: express.Response, next: express.NextFunction) => {
