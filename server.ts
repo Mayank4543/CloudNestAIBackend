@@ -55,8 +55,20 @@ app.get('/health', (req, res) => {
 // Mount file routes
 app.use('/api/files', fileRouter);
 
-// Mount authentication routes
+// Mount authentication routes  
+console.log('🔧 Mounting auth routes at /api/auth...');
 app.use('/api/auth', authRoutes);
+
+// Debug route mounting in development
+if (NODE_ENV === 'development') {
+    console.log('📍 Available routes:');
+    console.log('  - GET  /health');
+    console.log('  - GET  /api/auth/test');
+    console.log('  - POST /api/auth/register');
+    console.log('  - POST /api/auth/login');
+    console.log('  - GET  /api/auth/profile');
+    console.log('  - POST /api/auth/logout');
+}
 
 // 404 handler for undefined routes
 app.use((req, res) => {

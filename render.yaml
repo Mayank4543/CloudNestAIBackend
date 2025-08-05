@@ -1,0 +1,15 @@
+services:
+  - type: web
+    env: node
+    name: cloudnest-ai-backend
+    buildCommand: npm install && npm run build
+    startCommand: npm start
+    plan: free
+    healthCheckPath: /health
+    envVars:
+      - key: NODE_ENV
+        value: production
+      - key: PORT
+        fromService:
+          type: web
+          property: port
