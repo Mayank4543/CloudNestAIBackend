@@ -7,6 +7,8 @@ export interface IFile extends Document {
     mimetype: string;
     size: number;
     path: string;
+    userId: mongoose.Types.ObjectId;
+    isPublic: boolean;
     createdAt: Date;
     tags: string[];
 }
@@ -38,6 +40,15 @@ const FileSchema: Schema = new Schema({
         required: true,
         trim: true
     },
+    userId: {
+        type: Schema.Types.ObjectId,
+        ref: 'User',
+        required: true
+    },
+    isPublic: {
+        type: Boolean,
+        default: false
+    },
     createdAt: {
         type: Date,
         default: Date.now
@@ -62,6 +73,9 @@ FileSchema.index({ filename: 1 });
 FileSchema.index({ mimetype: 1 });
 FileSchema.index({ createdAt: -1 });
 FileSchema.index({ tags: 1 });
+FileSchema.index({ userId: 1 });
+FileSchema.index({ isPublic: 1 });
+FileSchema.index({ userId: 1, isPublic: 1 });
 
 // Create and export the model
 const File = mongoose.model<IFile>('File', FileSchema);

@@ -8,6 +8,8 @@ export interface CreateFileData {
   mimetype: string;
   size: number;
   path: string;
+  userId: string;
+  isPublic?: boolean;
   tags?: string[];
 }
 
@@ -20,6 +22,8 @@ export interface FileQueryOptions {
   sortBy?: string;
   sortOrder?: 'asc' | 'desc';
   searchKeyword?: string;
+  userId?: string;
+  isPublic?: boolean;
 }
 
 // Interface for pagination result
@@ -60,12 +64,17 @@ export class FileService {
   public static async saveFile(fileData: CreateFileData): Promise<IFile> {
     try {
       // Validate required fields
-      if (!fileData.filename || !fileData.originalname || !fileData.mimetype || !fileData.path) {
+      if (!fileData.filename || !fileData.originalname || !fileData.mimetype || !fileData.path || !fileData.userId) {
         throw new Error('Missing required file data fields');
       }
 
       if (fileData.size < 0) {
         throw new Error('File size cannot be negative');
+      }
+
+      // Validate userId format
+      if (!Types.ObjectId.isValid(fileData.userId)) {
+        throw new Error('Invalid user ID format');
       }
 
       // Validate and clean tags
@@ -80,6 +89,8 @@ export class FileService {
         mimetype: fileData.mimetype,
         size: fileData.size,
         path: fileData.path,
+        userId: new Types.ObjectId(fileData.userId),
+        isPublic: fileData.isPublic || false,
         tags: cleanTags
       });
 
@@ -108,6 +119,18 @@ export class FileService {
 
       // Build filter object
       const filter: FilterQuery<IFile> = {};
+
+      // Filter by user ownership or public files
+      if (options.isPublic === true) {
+        // Return only public files
+        filter.isPublic = true;
+      } else if (options.userId) {
+        // Return files owned by the specific user
+        if (!Types.ObjectId.isValid(options.userId)) {
+          throw new Error('Invalid user ID format');
+        }
+        filter.userId = new Types.ObjectId(options.userId);
+      }
 
       // Filter by mimetype (case-insensitive partial match)
       if (options.mimetype) {
@@ -169,16 +192,30 @@ export class FileService {
   /**
    * Get a specific file's details by its ID
    * @param id - File ID (MongoDB ObjectId)
+   * @param userId - Optional user ID to validate ownership
    * @returns Promise<IFile | null> - File document or null if not found
    */
-  public static async getFileById(id: string): Promise<IFile | null> {
+  public static async getFileById(id: string, userId?: string): Promise<IFile | null> {
     try {
       // Validate ObjectId format
       if (!Types.ObjectId.isValid(id)) {
         throw new Error('Invalid file ID format');
       }
 
-      const file = await File.findById(id).select('-__v').lean();
+      const filter: FilterQuery<IFile> = { _id: id };
+
+      // If userId is provided, check ownership or public access
+      if (userId) {
+        if (!Types.ObjectId.isValid(userId)) {
+          throw new Error('Invalid user ID format');
+        }
+        filter.$or = [
+          { userId: new Types.ObjectId(userId) },
+          { isPublic: true }
+        ];
+      }
+
+      const file = await File.findOne(filter).select('-__v').lean();
       return file as IFile | null;
 
     } catch (error) {
@@ -187,18 +224,28 @@ export class FileService {
   }
 
   /**
-   * Delete a file by its ID
+   * Delete a file by its ID (with ownership validation)
    * @param id - File ID (MongoDB ObjectId)
+   * @param userId - User ID to validate ownership
    * @returns Promise<IFile | null> - Deleted file document or null if not found
    */
-  public static async deleteFileById(id: string): Promise<IFile | null> {
+  public static async deleteFileById(id: string, userId: string): Promise<IFile | null> {
     try {
       // Validate ObjectId format
       if (!Types.ObjectId.isValid(id)) {
         throw new Error('Invalid file ID format');
       }
 
-      const deletedFile = await File.findByIdAndDelete(id).select('-__v');
+      if (!Types.ObjectId.isValid(userId)) {
+        throw new Error('Invalid user ID format');
+      }
+
+      // Delete only if the user owns the file
+      const deletedFile = await File.findOneAndDelete({
+        _id: id,
+        userId: new Types.ObjectId(userId)
+      }).select('-__v');
+
       return deletedFile;
 
     } catch (error) {
@@ -207,16 +254,21 @@ export class FileService {
   }
 
   /**
-   * Update tags for a specific file
+   * Update tags for a specific file (with ownership validation)
    * @param id - File ID (MongoDB ObjectId)
    * @param tags - New tags array
+   * @param userId - User ID to validate ownership
    * @returns Promise<IFile | null> - Updated file document or null if not found
    */
-  public static async updateFileTags(id: string, tags: string[]): Promise<IFile | null> {
+  public static async updateFileTags(id: string, tags: string[], userId: string): Promise<IFile | null> {
     try {
       // Validate ObjectId format
       if (!Types.ObjectId.isValid(id)) {
         throw new Error('Invalid file ID format');
+      }
+
+      if (!Types.ObjectId.isValid(userId)) {
+        throw new Error('Invalid user ID format');
       }
 
       // Validate and clean tags
@@ -228,8 +280,9 @@ export class FileService {
         .filter(tag => typeof tag === 'string' && tag.trim().length > 0)
         .map(tag => tag.trim().toLowerCase());
 
-      const updatedFile = await File.findByIdAndUpdate(
-        id,
+      // Update only if the user owns the file
+      const updatedFile = await File.findOneAndUpdate(
+        { _id: id, userId: new Types.ObjectId(userId) },
         { tags: cleanTags },
         { new: true, runValidators: true }
       ).select('-__v');
@@ -238,6 +291,38 @@ export class FileService {
 
     } catch (error) {
       throw new Error(`Failed to update file tags: ${error instanceof Error ? error.message : 'Unknown error'}`);
+    }
+  }
+
+  /**
+   * Update the public status of a specific file (with ownership validation)
+   * @param id - File ID (MongoDB ObjectId)
+   * @param isPublic - New public status
+   * @param userId - User ID to validate ownership
+   * @returns Promise<IFile | null> - Updated file document or null if not found
+   */
+  public static async updateFilePublicStatus(id: string, isPublic: boolean, userId: string): Promise<IFile | null> {
+    try {
+      // Validate ObjectId format
+      if (!Types.ObjectId.isValid(id)) {
+        throw new Error('Invalid file ID format');
+      }
+
+      if (!Types.ObjectId.isValid(userId)) {
+        throw new Error('Invalid user ID format');
+      }
+
+      // Update only if the user owns the file
+      const updatedFile = await File.findOneAndUpdate(
+        { _id: id, userId: new Types.ObjectId(userId) },
+        { isPublic: Boolean(isPublic) },
+        { new: true, runValidators: true }
+      ).select('-__v');
+
+      return updatedFile;
+
+    } catch (error) {
+      throw new Error(`Failed to update file public status: ${error instanceof Error ? error.message : 'Unknown error'}`);
     }
   }
 

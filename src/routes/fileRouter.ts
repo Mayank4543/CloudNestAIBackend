@@ -2,6 +2,7 @@ import express from 'express';
 import multer from 'multer';
 import path from 'path';
 import { FileController } from '../controller/FileController';
+import { authenticateToken } from '../middleware/authMiddleware';
 
 
 // Create a new router instance
@@ -30,13 +31,14 @@ const upload = multer({
 });
 
 // Simple routes - specific paths first, param routes last
-fileRouter.post('/upload',  upload.single('file'), FileController.uploadFile);
-fileRouter.get('/',  FileController.getAllFiles);
-fileRouter.get('/search', FileController.searchFiles);
-fileRouter.get('/stats',  FileController.getFileStats);
-fileRouter.get('/:id',  FileController.getFileById);
-fileRouter.delete('/:id',  FileController.deleteFile);
-fileRouter.put('/:id/tags',  FileController.updateFileTags);
+fileRouter.post('/upload', upload.single('file'), FileController.uploadFile);
+fileRouter.get('/', authenticateToken, FileController.getAllFiles);
+fileRouter.get('/search', authenticateToken, FileController.searchFiles);
+fileRouter.get('/stats', authenticateToken, FileController.getFileStats);
+fileRouter.get('/:id', authenticateToken, FileController.getFileById);
+fileRouter.delete('/:id', authenticateToken, FileController.deleteFile);
+fileRouter.put('/:id/tags', authenticateToken, FileController.updateFileTags);
+fileRouter.put('/:id/public', authenticateToken, FileController.updateFilePublicStatus);
 
 // Error handling middleware
 fileRouter.use((error: any, req: any, res: any, next: any) => {

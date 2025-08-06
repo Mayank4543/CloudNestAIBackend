@@ -16,10 +16,20 @@ export class FileController {
                 return;
             }
 
-            // Extract tags from request body (if provided)
+            // Check if user is authenticated
+            if (!req.user || !req.user._id) {
+                res.status(401).json({
+                    success: false,
+                    message: 'User authentication required'
+                });
+                return;
+            }
+
+            // Extract tags and isPublic from request body (if provided)
             const tags: string[] = req.body.tags
                 ? (Array.isArray(req.body.tags) ? req.body.tags : [req.body.tags])
                 : [];
+            const isPublic: boolean = req.body.isPublic === 'true' || req.body.isPublic === true;
 
             // Prepare file data
             const fileData: CreateFileData = {
@@ -28,6 +38,8 @@ export class FileController {
                 mimetype: req.file.mimetype,
                 size: req.file.size,
                 path: req.file.path,
+                userId: req.user._id.toString(),
+                isPublic: isPublic,
                 tags: tags
             };
 
@@ -45,6 +57,8 @@ export class FileController {
                     mimetype: savedFile.mimetype,
                     size: savedFile.size,
                     path: savedFile.path,
+                    userId: savedFile.userId,
+                    isPublic: savedFile.isPublic,
                     createdAt: savedFile.createdAt,
                     tags: savedFile.tags
                 }
@@ -63,6 +77,15 @@ export class FileController {
     // Fetch all uploaded files from MongoDB
     public static async getAllFiles(req: Request, res: Response): Promise<void> {
         try {
+            // Check if user is authenticated
+            if (!req.user || !req.user._id) {
+                res.status(401).json({
+                    success: false,
+                    message: 'User authentication required'
+                });
+                return;
+            }
+
             // Extract query parameters for pagination and filtering
             const page = parseInt(req.query.page as string) || 1;
             const limit = parseInt(req.query.limit as string) || 10;
@@ -70,24 +93,37 @@ export class FileController {
             const tags = req.query.tags as string;
             const sortBy = req.query.sortBy as string;
             const sortOrder = req.query.sortOrder as 'asc' | 'desc';
+            const isPublic = req.query.public === 'true';
 
             // Parse tags if provided
             const tagArray = tags ? tags.split(',').map(tag => tag.trim()) : undefined;
 
-            // Get files using service
-            const result = await FileService.getFiles({
+            // Determine query options based on public flag
+            const queryOptions = isPublic ? {
                 page,
                 limit,
                 mimetype,
                 tags: tagArray,
                 sortBy,
-                sortOrder
-            });
+                sortOrder,
+                isPublic: true
+            } : {
+                page,
+                limit,
+                mimetype,
+                tags: tagArray,
+                sortBy,
+                sortOrder,
+                userId: req.user._id.toString()
+            };
+
+            // Get files using service
+            const result = await FileService.getFiles(queryOptions);
 
             // Return files with pagination info
             res.status(200).json({
                 success: true,
-                message: 'Files retrieved successfully',
+                message: `${isPublic ? 'Public files' : 'User files'} retrieved successfully`,
                 data: result.files,
                 pagination: result.pagination
             });
@@ -107,12 +143,21 @@ export class FileController {
         try {
             const { id } = req.params;
 
-            const file = await FileService.getFileById(id);
+            // Check if user is authenticated
+            if (!req.user || !req.user._id) {
+                res.status(401).json({
+                    success: false,
+                    message: 'User authentication required'
+                });
+                return;
+            }
+
+            const file = await FileService.getFileById(id, req.user._id.toString());
 
             if (!file) {
                 res.status(404).json({
                     success: false,
-                    message: 'File not found'
+                    message: 'File not found or access denied'
                 });
                 return;
             }
@@ -138,12 +183,21 @@ export class FileController {
         try {
             const { id } = req.params;
 
-            const deletedFile = await FileService.deleteFileById(id);
+            // Check if user is authenticated
+            if (!req.user || !req.user._id) {
+                res.status(401).json({
+                    success: false,
+                    message: 'User authentication required'
+                });
+                return;
+            }
+
+            const deletedFile = await FileService.deleteFileById(id, req.user._id.toString());
 
             if (!deletedFile) {
                 res.status(404).json({
                     success: false,
-                    message: 'File not found'
+                    message: 'File not found or access denied'
                 });
                 return;
             }
@@ -170,6 +224,15 @@ export class FileController {
             const { id } = req.params;
             const { tags } = req.body;
 
+            // Check if user is authenticated
+            if (!req.user || !req.user._id) {
+                res.status(401).json({
+                    success: false,
+                    message: 'User authentication required'
+                });
+                return;
+            }
+
             if (!Array.isArray(tags)) {
                 res.status(400).json({
                     success: false,
@@ -178,12 +241,12 @@ export class FileController {
                 return;
             }
 
-            const updatedFile = await FileService.updateFileTags(id, tags);
+            const updatedFile = await FileService.updateFileTags(id, tags, req.user._id.toString());
 
             if (!updatedFile) {
                 res.status(404).json({
                     success: false,
-                    message: 'File not found'
+                    message: 'File not found or access denied'
                 });
                 return;
             }
@@ -204,10 +267,68 @@ export class FileController {
         }
     }
 
+    // Method to update file public status
+    public static async updateFilePublicStatus(req: Request, res: Response): Promise<void> {
+        try {
+            const { id } = req.params;
+            const { isPublic } = req.body;
+
+            // Check if user is authenticated
+            if (!req.user || !req.user._id) {
+                res.status(401).json({
+                    success: false,
+                    message: 'User authentication required'
+                });
+                return;
+            }
+
+            if (typeof isPublic !== 'boolean') {
+                res.status(400).json({
+                    success: false,
+                    message: 'isPublic must be a boolean value'
+                });
+                return;
+            }
+
+            const updatedFile = await FileService.updateFilePublicStatus(id, isPublic, req.user._id.toString());
+
+            if (!updatedFile) {
+                res.status(404).json({
+                    success: false,
+                    message: 'File not found or access denied'
+                });
+                return;
+            }
+
+            res.status(200).json({
+                success: true,
+                message: `File ${isPublic ? 'made public' : 'made private'} successfully`,
+                data: updatedFile
+            });
+
+        } catch (error) {
+            console.error('Error updating file public status:', error);
+            res.status(500).json({
+                success: false,
+                message: 'Error updating file public status',
+                error: error instanceof Error ? error.message : 'Unknown error'
+            });
+        }
+    }
+
     // Method to search files
     public static async searchFiles(req: Request, res: Response): Promise<void> {
         try {
             const { q: searchTerm } = req.query;
+
+            // Check if user is authenticated
+            if (!req.user || !req.user._id) {
+                res.status(401).json({
+                    success: false,
+                    message: 'User authentication required'
+                });
+                return;
+            }
 
             if (!searchTerm || typeof searchTerm !== 'string') {
                 res.status(400).json({
@@ -224,21 +345,34 @@ export class FileController {
             const tags = req.query.tags as string;
             const sortBy = req.query.sortBy as string;
             const sortOrder = req.query.sortOrder as 'asc' | 'desc';
+            const isPublic = req.query.public === 'true';
 
             const tagArray = tags ? tags.split(',').map(tag => tag.trim()) : undefined;
 
-            const result = await FileService.searchFiles(searchTerm, {
+            // Determine query options based on public flag
+            const searchOptions = isPublic ? {
                 page,
                 limit,
                 mimetype,
                 tags: tagArray,
                 sortBy,
-                sortOrder
-            });
+                sortOrder,
+                isPublic: true
+            } : {
+                page,
+                limit,
+                mimetype,
+                tags: tagArray,
+                sortBy,
+                sortOrder,
+                userId: req.user._id.toString()
+            };
+
+            const result = await FileService.searchFiles(searchTerm, searchOptions);
 
             res.status(200).json({
                 success: true,
-                message: 'Files search completed successfully',
+                message: `${isPublic ? 'Public files' : 'User files'} search completed successfully`,
                 data: result.files,
                 pagination: result.pagination
             });

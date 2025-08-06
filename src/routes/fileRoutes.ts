@@ -62,6 +62,9 @@ router.delete('/:id', FileController.deleteFile);
 // Update file tags (protected)
 router.put('/:id/tags', FileController.updateFileTags);
 
+// Update file public status (protected)
+router.put('/:id/public', FileController.updateFilePublicStatus);
+
 // Error handling middleware for multer
 router.use((error: any, req: express.Request, res: express.Response, next: express.NextFunction) => {
     if (error instanceof multer.MulterError) {
