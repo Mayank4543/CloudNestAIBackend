@@ -172,7 +172,7 @@ export class FileController {
             const result = await FileService.getFiles(queryOptions);
 
             // Add URLs to all files
-            const filesWithUrls = this.addFileUrls(result.files, req);
+            const filesWithUrls = await FileController.addFileUrls(result.files, req);
 
             // Return files with pagination info
             res.status(200).json({
@@ -427,7 +427,7 @@ export class FileController {
             const result = await FileService.searchFiles(searchTerm, searchOptions);
 
             // Add URLs to search results
-            const filesWithUrls = this.addFileUrls(result.files, req);
+            const filesWithUrls = await FileController.addFileUrls(result.files, req);
 
             res.status(200).json({
                 success: true,
