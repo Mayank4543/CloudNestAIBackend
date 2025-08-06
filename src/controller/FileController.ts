@@ -18,7 +18,7 @@ export class FileController {
 
     // Helper method to add URLs to multiple files
     private static addFileUrls(files: any[], req: Request): any[] {
-        return files.map(file => this.addFileUrl(file, req));
+        return files.map(file => FileController.addFileUrl(file, req));
     }
 
     // Debug endpoint to help diagnose upload issues
@@ -216,7 +216,7 @@ export class FileController {
                 return;
             }
 
-            const fileWithUrl = this.addFileUrl(file, req);
+            const fileWithUrl = FileController.addFileUrl(file, req);
 
             res.status(200).json({
                 success: true,
