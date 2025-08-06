@@ -18,6 +18,8 @@ export class FileController {
 
     // Helper method to add URLs to multiple files
     private static addFileUrls(files: any[], req: Request): any[] {
+        console.log('🔗 addFileUrls called with', files?.length || 0, 'files');
+        console.log('🔗 Method exists:', typeof FileController.addFileUrl);
         return files.map(file => FileController.addFileUrl(file, req));
     }
 
@@ -128,6 +130,8 @@ export class FileController {
     // Fetch all uploaded files from MongoDB
     public static async getAllFiles(req: Request, res: Response): Promise<void> {
         try {
+            console.log('🚀 getAllFiles method called');
+
             // Check if user is authenticated
             if (!req.user || !req.user._id) {
                 res.status(401).json({
@@ -136,6 +140,8 @@ export class FileController {
                 });
                 return;
             }
+
+            console.log('✅ User authenticated:', req.user._id);
 
             // Extract query parameters for pagination and filtering
             const page = parseInt(req.query.page as string) || 1;
@@ -170,9 +176,12 @@ export class FileController {
 
             // Get files using service
             const result = await FileService.getFiles(queryOptions);
+            console.log('📁 Files retrieved from service:', result.files.length);
 
             // Add URLs to all files
+            console.log('🔗 About to call addFileUrls with', result.files.length, 'files');
             const filesWithUrls = FileController.addFileUrls(result.files, req);
+            console.log('✅ URLs added successfully');
 
             // Return files with pagination info
             res.status(200).json({
