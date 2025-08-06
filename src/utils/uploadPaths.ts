@@ -4,22 +4,18 @@ import fs from 'fs';
 /**
  * Get the correct upload directory path for both development and production
  * In development: points to src/upload
- * In production: points to dist/upload (relative to project root)
+ * In production: points to uploads folder at project root
  */
 export const getUploadDir = (): string => {
-    // Get project root directory (where package.json is located)
-    const projectRoot = path.resolve(__dirname, '../..');
-
-    // In production, we'll create uploads folder at project root level
-    // In development, we can use the existing src/upload folder
     const isDevelopment = process.env.NODE_ENV !== 'production';
 
     if (isDevelopment) {
-        // Development: use src/upload
-        return path.join(projectRoot, 'src', 'upload');
+        // Development: use src/upload relative to current working directory
+        return path.join(process.cwd(), 'src', 'upload');
     } else {
         // Production: use uploads folder at project root
-        return path.join(projectRoot, 'uploads');
+        // process.cwd() gives us the project root where package.json is
+        return path.join(process.cwd(), 'uploads');
     }
 };
 
@@ -29,11 +25,23 @@ export const getUploadDir = (): string => {
 export const ensureUploadDir = (): void => {
     const uploadDir = getUploadDir();
 
-    if (!fs.existsSync(uploadDir)) {
-        fs.mkdirSync(uploadDir, { recursive: true });
-        console.log(`✅ Created upload directory: ${uploadDir}`);
-    } else {
-        console.log(`✅ Upload directory exists: ${uploadDir}`);
+    try {
+        if (!fs.existsSync(uploadDir)) {
+            fs.mkdirSync(uploadDir, { recursive: true });
+            console.log(`✅ Created upload directory: ${uploadDir}`);
+        } else {
+            console.log(`✅ Upload directory exists: ${uploadDir}`);
+        }
+
+        // Test write permissions
+        const testFile = path.join(uploadDir, '.test-write');
+        fs.writeFileSync(testFile, 'test');
+        fs.unlinkSync(testFile);
+        console.log(`✅ Upload directory is writable: ${uploadDir}`);
+
+    } catch (error) {
+        console.error(`❌ Error with upload directory ${uploadDir}:`, error);
+        throw new Error(`Failed to setup upload directory: ${uploadDir}`);
     }
 };
 

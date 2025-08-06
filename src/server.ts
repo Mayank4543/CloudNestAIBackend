@@ -6,6 +6,7 @@ import path from 'path';
 import fileRouter from './routes/fileRouter';
 import authRoutes from './routes/authRoutes';
 import { getStaticServePath, ensureUploadDir } from './utils/uploadPaths';
+import { serveUploadedFile } from './middleware/fileServingMiddleware';
 
 dotenv.config();
 
@@ -15,6 +16,10 @@ ensureUploadDir();
 const app = express();
 const PORT = process.env.PORT || 3000;
 const MONGODB_URI = process.env.MONGODB_URI || 'mongodb://localhost:27017/cloudnest';
+
+console.log(`🌍 Environment: ${process.env.NODE_ENV || 'development'}`);
+console.log(`📂 Working directory: ${process.cwd()}`);
+console.log(`📁 Upload directory will be: ${getStaticServePath()}`);
 
 const allowedOrigins = process.env.CORS_ORIGIN?.split(',') || ['http://localhost:3000'];
 
@@ -32,13 +37,12 @@ app.use(cors({
 app.use(express.json({ limit: '50mb' }));
 app.use(express.urlencoded({ extended: true, limit: '50mb' }));
 
-// Static file serving for uploaded files
-// This serves files from /uploads URL path
-const staticPath = getStaticServePath();
-app.use('/uploads', express.static(staticPath));
+// Static file serving for uploaded files with custom middleware
+app.use('/uploads', serveUploadedFile);
 
-console.log(`📁 Serving static files from: ${staticPath}`);
-console.log(`🌐 Files will be accessible at: /uploads/<filename>`);
+const staticPath = getStaticServePath();
+console.log(`📁 Upload directory: ${staticPath}`);
+console.log(`🌐 Files accessible at: /uploads/<filename>`);
 
 // Routes
 app.use('/api/files', fileRouter);

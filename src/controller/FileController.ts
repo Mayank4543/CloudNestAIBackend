@@ -1,6 +1,8 @@
 import { Request, Response } from 'express';
 import { FileService, CreateFileData } from '../services/FileService';
-import { getFileUrl, extractFilename } from '../utils/uploadPaths';
+import { getFileUrl, extractFilename, getUploadDir } from '../utils/uploadPaths';
+import fs from 'fs';
+import path from 'path';
 
 // Controller for file operations
 export class FileController {
@@ -17,6 +19,35 @@ export class FileController {
     // Helper method to add URLs to multiple files
     private static addFileUrls(files: any[], req: Request): any[] {
         return files.map(file => this.addFileUrl(file, req));
+    }
+
+    // Debug endpoint to help diagnose upload issues
+    public static async getDebugInfo(req: Request, res: Response): Promise<void> {
+        try {
+            const uploadDir = getUploadDir();
+            const exists = fs.existsSync(uploadDir);
+            const files = exists ? fs.readdirSync(uploadDir) : [];
+
+            res.status(200).json({
+                success: true,
+                debug: {
+                    environment: process.env.NODE_ENV || 'development',
+                    workingDirectory: process.cwd(),
+                    uploadDirectory: uploadDir,
+                    uploadDirExists: exists,
+                    filesInUploadDir: files,
+                    __dirname: __dirname,
+                    baseUrl: process.env.BASE_URL,
+                    timestamp: new Date().toISOString()
+                }
+            });
+        } catch (error) {
+            res.status(500).json({
+                success: false,
+                message: 'Debug info error',
+                error: error instanceof Error ? error.message : 'Unknown error'
+            });
+        }
     }
 
     // Handle single file upload and return file metadata

@@ -15,30 +15,47 @@ const fileRouter = express.Router();
 // Configure multer for file uploads
 const storage = multer.diskStorage({
     destination: (req, file, cb) => {
-        // Use the utility function to get correct upload directory
-        const uploadDir = getUploadDir();
+        try {
+            // Use the utility function to get correct upload directory
+            const uploadDir = getUploadDir();
 
-        // Double-check directory exists before saving
-        if (!fs.existsSync(uploadDir)) {
-            fs.mkdirSync(uploadDir, { recursive: true });
+            console.log(`📁 Attempting to save file to: ${uploadDir}`);
+
+            // Double-check directory exists before saving
+            if (!fs.existsSync(uploadDir)) {
+                console.log(`📂 Creating directory: ${uploadDir}`);
+                fs.mkdirSync(uploadDir, { recursive: true });
+            }
+
+            // Verify the directory is writable
+            fs.accessSync(uploadDir, fs.constants.W_OK);
+
+            cb(null, uploadDir);
+        } catch (error) {
+            console.error('❌ Error setting up upload destination:', error);
+            cb(error as Error, '');
         }
-
-        cb(null, uploadDir);
     },
     filename: (req, file, cb) => {
-        // Generate unique filename with timestamp and random suffix
-        const uniqueSuffix = Date.now() + '-' + Math.round(Math.random() * 1E9);
-        const fileExtension = path.extname(file.originalname);
-        const baseName = path.basename(file.originalname, fileExtension);
+        try {
+            // Generate unique filename with timestamp and random suffix
+            const uniqueSuffix = Date.now() + '-' + Math.round(Math.random() * 1E9);
+            const fileExtension = path.extname(file.originalname);
+            const baseName = path.basename(file.originalname, fileExtension);
 
-        // Clean filename to prevent path traversal attacks
-        const cleanBaseName = baseName.replace(/[^a-zA-Z0-9._-]/g, '_');
+            // Clean filename to prevent path traversal attacks
+            const cleanBaseName = baseName.replace(/[^a-zA-Z0-9._-]/g, '_');
+            const finalFilename = `${cleanBaseName}-${uniqueSuffix}${fileExtension}`;
 
-        cb(null, `${cleanBaseName}-${uniqueSuffix}${fileExtension}`);
+            console.log(`📄 Generated filename: ${finalFilename}`);
+
+            cb(null, finalFilename);
+        } catch (error) {
+            console.error('❌ Error generating filename:', error);
+            cb(error as Error, '');
+        }
     }
-});
-
-// File filter for security (optional but recommended)
+});// File filter for security (optional but recommended)
 const fileFilter = (req: express.Request, file: Express.Multer.File, cb: multer.FileFilterCallback) => {
     // Add any file type restrictions here if needed
     // For now, allow all file types
@@ -50,13 +67,14 @@ const upload = multer({
     storage: storage,
     fileFilter: fileFilter,
     limits: {
-        fileSize: 10 * 1024 * 1024, // 10MB limit
-        files: 1 // Allow only 1 file per upload
+        fileSize: parseInt(process.env.MAX_FILE_SIZE || '10485760'), // 10MB default
+        files: parseInt(process.env.MAX_FILES || '1') // 1 file default
     }
 });
 
 // Simple routes - specific paths first, param routes last
 fileRouter.post('/upload', authenticateToken, upload.single('file'), FileController.uploadFile);
+fileRouter.get('/debug', FileController.getDebugInfo); // Debug endpoint
 fileRouter.get('/', authenticateToken, FileController.getAllFiles);
 fileRouter.get('/search', authenticateToken, FileController.searchFiles);
 fileRouter.get('/stats', authenticateToken, FileController.getFileStats);
