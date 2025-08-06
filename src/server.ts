@@ -5,8 +5,12 @@ import dotenv from 'dotenv';
 import path from 'path';
 import fileRouter from './routes/fileRouter';
 import authRoutes from './routes/authRoutes';
+import { getStaticServePath, ensureUploadDir } from './utils/uploadPaths';
 
 dotenv.config();
+
+// Ensure upload directory exists on server startup
+ensureUploadDir();
 
 const app = express();
 const PORT = process.env.PORT || 3000;
@@ -28,8 +32,13 @@ app.use(cors({
 app.use(express.json({ limit: '50mb' }));
 app.use(express.urlencoded({ extended: true, limit: '50mb' }));
 
-// Static file serving
-app.use('/uploads', express.static(path.join(__dirname, 'src/upload')));
+// Static file serving for uploaded files
+// This serves files from /uploads URL path
+const staticPath = getStaticServePath();
+app.use('/uploads', express.static(staticPath));
+
+console.log(`📁 Serving static files from: ${staticPath}`);
+console.log(`🌐 Files will be accessible at: /uploads/<filename>`);
 
 // Routes
 app.use('/api/files', fileRouter);

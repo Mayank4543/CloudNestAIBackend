@@ -1,8 +1,23 @@
 import { Request, Response } from 'express';
 import { FileService, CreateFileData } from '../services/FileService';
+import { getFileUrl, extractFilename } from '../utils/uploadPaths';
 
 // Controller for file operations
 export class FileController {
+
+    // Helper method to add public URL to file objects
+    private static addFileUrl(file: any, req: Request): any {
+        const filename = extractFilename(file.path);
+        return {
+            ...file,
+            url: getFileUrl(filename, req)
+        };
+    }
+
+    // Helper method to add URLs to multiple files
+    private static addFileUrls(files: any[], req: Request): any[] {
+        return files.map(file => this.addFileUrl(file, req));
+    }
 
     // Handle single file upload and return file metadata
     public static async uploadFile(req: Request, res: Response): Promise<void> {
@@ -46,6 +61,10 @@ export class FileController {
             // Save file using service
             const savedFile = await FileService.saveFile(fileData);
 
+            // Generate public URL for the uploaded file
+            const filename = extractFilename(savedFile.path);
+            const fileUrl = getFileUrl(filename, req);
+
             // Return file metadata
             res.status(201).json({
                 success: true,
@@ -57,6 +76,7 @@ export class FileController {
                     mimetype: savedFile.mimetype,
                     size: savedFile.size,
                     path: savedFile.path,
+                    url: fileUrl, // Public URL for accessing the file
                     userId: savedFile.userId,
                     isPublic: savedFile.isPublic,
                     createdAt: savedFile.createdAt,
@@ -120,11 +140,14 @@ export class FileController {
             // Get files using service
             const result = await FileService.getFiles(queryOptions);
 
+            // Add URLs to all files
+            const filesWithUrls = this.addFileUrls(result.files, req);
+
             // Return files with pagination info
             res.status(200).json({
                 success: true,
                 message: `${isPublic ? 'Public files' : 'User files'} retrieved successfully`,
-                data: result.files,
+                data: filesWithUrls,
                 pagination: result.pagination
             });
 
@@ -162,10 +185,12 @@ export class FileController {
                 return;
             }
 
+            const fileWithUrl = this.addFileUrl(file, req);
+
             res.status(200).json({
                 success: true,
                 message: 'File retrieved successfully',
-                data: file
+                data: fileWithUrl
             });
 
         } catch (error) {
@@ -370,10 +395,13 @@ export class FileController {
 
             const result = await FileService.searchFiles(searchTerm, searchOptions);
 
+            // Add URLs to search results
+            const filesWithUrls = this.addFileUrls(result.files, req);
+
             res.status(200).json({
                 success: true,
                 message: `${isPublic ? 'Public files' : 'User files'} search completed successfully`,
-                data: result.files,
+                data: filesWithUrls,
                 pagination: result.pagination
             });
 
