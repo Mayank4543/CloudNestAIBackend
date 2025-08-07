@@ -87,7 +87,7 @@ export class FileController {
             // Save file using service
             const savedFile = await FileService.saveFile(fileData);
 
-           
+
             const filename = extractFilename(savedFile.path);
             const fileUrl = getFileUrl(filename, req);
 
@@ -169,6 +169,19 @@ export class FileController {
 
             // Get files using service
             const result = await FileService.getFiles(queryOptions);
+            console.log('📁 Files retrieved from service. Result:', result);
+
+            // Validate that result and files array exist
+            if (!result || !result.files) {
+                console.error('❌ Invalid result from FileService.getFiles:', result);
+                res.status(500).json({
+                    success: false,
+                    message: 'Error retrieving files from database',
+                    error: 'Invalid result structure from file service'
+                });
+                return;
+            }
+
             console.log('📁 Files retrieved from service:', result.files.length);
 
             // Add URLs to all files - directly inline to avoid any static method issues
@@ -442,6 +455,17 @@ export class FileController {
             };
 
             const result = await FileService.searchFiles(searchTerm, searchOptions);
+
+            // Validate that result and files array exist
+            if (!result || !result.files) {
+                console.error('❌ Invalid result from FileService.searchFiles:', result);
+                res.status(500).json({
+                    success: false,
+                    message: 'Error searching files in database',
+                    error: 'Invalid result structure from file service'
+                });
+                return;
+            }
 
             // Add URLs to search results - inline to avoid static method issues
             const filesWithUrls = result.files.map(file => {

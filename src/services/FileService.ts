@@ -158,31 +158,51 @@ export class FileService {
       const sortObj: any = {};
       sortObj[sortBy] = sortOrder === 'asc' ? 1 : -1;
 
-      // Execute queries in parallel
-      const [files, totalCount] = await Promise.all([
-        File.find(filter)
-          .sort(sortObj)
-          .skip(skip)
-          .limit(limit)
-          .select('-__v')
-          .lean(),
-        File.countDocuments(filter)
-      ]);
+      try {
+        // Execute queries in parallel
+        const [files, totalCount] = await Promise.all([
+          File.find(filter)
+            .sort(sortObj)
+            .skip(skip)
+            .limit(limit)
+            .select('-__v')
+            .lean(),
+          File.countDocuments(filter)
+        ]);
 
-      // Calculate pagination info
-      const totalPages = Math.ceil(totalCount / limit);
+        // Ensure files is always an array
+        const filesArray = Array.isArray(files) ? files : [];
+        const validTotalCount = typeof totalCount === 'number' ? totalCount : 0;
 
-      return {
-        files: files as IFile[],
-        pagination: {
-          currentPage: page,
-          totalPages,
-          totalFiles: totalCount,
-          hasNextPage: page < totalPages,
-          hasPreviousPage: page > 1,
-          limit
-        }
-      };
+        // Calculate pagination info
+        const totalPages = Math.ceil(validTotalCount / limit);
+
+        return {
+          files: filesArray as IFile[],
+          pagination: {
+            currentPage: page,
+            totalPages,
+            totalFiles: validTotalCount,
+            hasNextPage: page < totalPages,
+            hasPreviousPage: page > 1,
+            limit
+          }
+        };
+      } catch (dbError) {
+        console.error('Database query error:', dbError);
+        // Return empty result on database errors
+        return {
+          files: [],
+          pagination: {
+            currentPage: page,
+            totalPages: 0,
+            totalFiles: 0,
+            hasNextPage: false,
+            hasPreviousPage: false,
+            limit
+          }
+        };
+      }
 
     } catch (error) {
       throw new Error(`Failed to get files: ${error instanceof Error ? error.message : 'Unknown error'}`);
@@ -466,7 +486,24 @@ export class FileService {
         searchKeyword: searchTerm.trim()
       };
 
-      return this.getFiles(searchOptions);
+      const result = await this.getFiles(searchOptions);
+
+      // Ensure result has proper structure
+      if (!result || !result.files) {
+        return {
+          files: [],
+          pagination: {
+            currentPage: 1,
+            totalPages: 0,
+            totalFiles: 0,
+            hasNextPage: false,
+            hasPreviousPage: false,
+            limit: options.limit || 10
+          }
+        };
+      }
+
+      return result;
 
     } catch (error) {
       throw new Error(`Failed to search files: ${error instanceof Error ? error.message : 'Unknown error'}`);
