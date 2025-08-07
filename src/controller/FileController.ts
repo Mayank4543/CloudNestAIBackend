@@ -87,7 +87,7 @@ export class FileController {
             // Save file using service
             const savedFile = await FileService.saveFile(fileData);
 
-            // Generate public URL for the uploaded file
+           
             const filename = extractFilename(savedFile.path);
             const fileUrl = getFileUrl(filename, req);
 
