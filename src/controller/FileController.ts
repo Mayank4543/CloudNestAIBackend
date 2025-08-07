@@ -16,26 +16,6 @@ export class FileController {
         };
     }
 
-    // Helper method to add URLs to multiple files
-    private static addFileUrls(files: any[], req: Request): any[] {
-        console.log('🔗 addFileUrls called with', files?.length || 0, 'files');
-        console.log('🔗 FileController:', typeof FileController);
-        console.log('🔗 addFileUrl method:', typeof FileController.addFileUrl);
-
-        if (!files || !Array.isArray(files)) {
-            console.log('❌ Invalid files array');
-            return [];
-        }
-
-        return files.map(file => {
-            const filename = extractFilename(file.path);
-            return {
-                ...file,
-                url: getFileUrl(filename, req)
-            };
-        });
-    }
-
     // Debug endpoint to help diagnose upload issues
     public static async getDebugInfo(req: Request, res: Response): Promise<void> {
         try {
@@ -191,17 +171,20 @@ export class FileController {
             const result = await FileService.getFiles(queryOptions);
             console.log('📁 Files retrieved from service:', result.files.length);
 
-            // Add URLs to all files
-            console.log('🔗 About to call addFileUrls with', result.files.length, 'files');
-            let filesWithUrls;
-            try {
-                filesWithUrls = FileController.addFileUrls(result.files, req);
-                console.log('✅ URLs added successfully, result count:', filesWithUrls.length);
-            } catch (urlError) {
-                console.error('❌ Error adding URLs:', urlError);
-                // Fallback: return files without URLs
-                filesWithUrls = result.files;
-            }
+            // Add URLs to all files - directly inline to avoid any static method issues
+            const filesWithUrls = result.files.map((file: any) => {
+                try {
+                    const filename = extractFilename(file.path);
+                    return {
+                        ...file,
+                        url: getFileUrl(filename, req)
+                    };
+                } catch (err) {
+                    console.error('Error adding URL to file:', err);
+                    return file; // Return file without URL if there's an error
+                }
+            });
+            console.log('✅ URLs added successfully, result count:', filesWithUrls.length);
 
             // Return files with pagination info
             res.status(200).json({
@@ -460,8 +443,14 @@ export class FileController {
 
             const result = await FileService.searchFiles(searchTerm, searchOptions);
 
-            // Add URLs to search results
-            const filesWithUrls = FileController.addFileUrls(result.files, req);
+            // Add URLs to search results - inline to avoid static method issues
+            const filesWithUrls = result.files.map(file => {
+                const filename = extractFilename(file.path);
+                return {
+                    ...file,
+                    url: getFileUrl(filename, req)
+                };
+            });
 
             res.status(200).json({
                 success: true,

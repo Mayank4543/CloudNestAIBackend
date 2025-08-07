@@ -57,8 +57,7 @@ const storage = multer.diskStorage({
     }
 });// File filter for security (optional but recommended)
 const fileFilter = (req: express.Request, file: Express.Multer.File, cb: multer.FileFilterCallback) => {
-    // Add any file type restrictions here if needed
-    // For now, allow all file types
+ 
     cb(null, true);
 };
 
