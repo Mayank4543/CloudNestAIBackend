@@ -19,8 +19,21 @@ export class FileController {
     // Helper method to add URLs to multiple files
     private static addFileUrls(files: any[], req: Request): any[] {
         console.log('🔗 addFileUrls called with', files?.length || 0, 'files');
-        console.log('🔗 Method exists:', typeof FileController.addFileUrl);
-        return files.map(file => FileController.addFileUrl(file, req));
+        console.log('🔗 FileController:', typeof FileController);
+        console.log('🔗 addFileUrl method:', typeof FileController.addFileUrl);
+
+        if (!files || !Array.isArray(files)) {
+            console.log('❌ Invalid files array');
+            return [];
+        }
+
+        return files.map(file => {
+            const filename = extractFilename(file.path);
+            return {
+                ...file,
+                url: getFileUrl(filename, req)
+            };
+        });
     }
 
     // Debug endpoint to help diagnose upload issues
@@ -180,8 +193,15 @@ export class FileController {
 
             // Add URLs to all files
             console.log('🔗 About to call addFileUrls with', result.files.length, 'files');
-            const filesWithUrls = FileController.addFileUrls(result.files, req);
-            console.log('✅ URLs added successfully');
+            let filesWithUrls;
+            try {
+                filesWithUrls = FileController.addFileUrls(result.files, req);
+                console.log('✅ URLs added successfully, result count:', filesWithUrls.length);
+            } catch (urlError) {
+                console.error('❌ Error adding URLs:', urlError);
+                // Fallback: return files without URLs
+                filesWithUrls = result.files;
+            }
 
             // Return files with pagination info
             res.status(200).json({
@@ -225,7 +245,12 @@ export class FileController {
                 return;
             }
 
-            const fileWithUrl = FileController.addFileUrl(file, req);
+            // Add URL to file inline
+            const filename = extractFilename(file.path);
+            const fileWithUrl = {
+                ...file,
+                url: getFileUrl(filename, req)
+            };
 
             res.status(200).json({
                 success: true,
