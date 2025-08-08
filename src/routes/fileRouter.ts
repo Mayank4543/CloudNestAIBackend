@@ -7,6 +7,7 @@ import { FileController } from '../controller/FileController';
 import { authenticateToken } from '../middleware/authMiddleware';
 import { getUploadDir, ensureUploadDir } from '../utils/uploadPaths';
 import File from '../models/File';
+import { FileService } from '../services/FileService';
 
 // Ensure upload directory exists on startup
 ensureUploadDir();
@@ -94,9 +95,19 @@ fileRouter.get('/access/:filename', async (req, res) => {
 
         // If file is public, allow access
         if (fileRecord.isPublic) {
-            // If stored in R2, redirect to R2 URL
-            if (fileRecord.r2Url) {
-                return res.redirect(fileRecord.r2Url);
+            // If stored in R2, generate a fresh presigned URL and redirect
+            if (fileRecord.r2ObjectKey) {
+                try {
+                    // Generate a fresh presigned URL that's valid for 24 hours
+                    const presignedUrl = await FileService.generatePresignedUrl(fileRecord.r2ObjectKey);
+                    return res.redirect(presignedUrl);
+                } catch (presignError) {
+                    console.error('Error generating presigned URL:', presignError);
+                    // If we have a stored URL as fallback, use that
+                    if (fileRecord.r2Url) {
+                        return res.redirect(fileRecord.r2Url);
+                    }
+                }
             }
 
             // Otherwise, try to serve from local storage
@@ -139,9 +150,19 @@ fileRouter.get('/access/:filename', async (req, res) => {
 
 
 
-            // If the file is stored in R2, redirect to the R2 URL
-            if (fileRecord.r2Url) {
-                return res.redirect(fileRecord.r2Url);
+            // If the file is stored in R2, generate a fresh presigned URL and redirect
+            if (fileRecord.r2ObjectKey) {
+                try {
+                    // Generate a fresh presigned URL that's valid for 24 hours
+                    const presignedUrl = await FileService.generatePresignedUrl(fileRecord.r2ObjectKey);
+                    return res.redirect(presignedUrl);
+                } catch (presignError) {
+                    console.error('Error generating presigned URL:', presignError);
+                    // If we have a stored URL as fallback, use that
+                    if (fileRecord.r2Url) {
+                        return res.redirect(fileRecord.r2Url);
+                    }
+                }
             }
 
             // Otherwise, try to serve from local disk

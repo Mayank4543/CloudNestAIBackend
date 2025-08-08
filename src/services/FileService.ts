@@ -1,6 +1,7 @@
 import File, { IFile } from '../models/File';
 import { FilterQuery, Types } from 'mongoose';
-import { S3Client, PutObjectCommand } from '@aws-sdk/client-s3';
+import { S3Client, PutObjectCommand, GetObjectCommand } from '@aws-sdk/client-s3';
+import { getSignedUrl } from '@aws-sdk/s3-request-presigner';
 import fs from 'fs';
 import path from 'path';
 
@@ -84,13 +85,71 @@ export class FileService {
   }
 
   /**
+   * Generate a pre-signed URL for accessing a file in R2
+   * @param objectKey - The key (filename) of the object in R2
+   * @param expiresInSeconds - How long the URL should be valid (default: 24 hours)
+   * @returns Promise<string> - Pre-signed URL
+   */
+  public static async generatePresignedUrl(objectKey: string, expiresInSeconds: number = 86400): Promise<string> {
+    try {
+      const r2Client = this.getR2Client();
+      const bucketName = process.env.R2_BUCKET_NAME;
+
+      if (!bucketName) {
+        throw new Error('R2_BUCKET_NAME is not defined');
+      }
+
+      const command = new GetObjectCommand({
+        Bucket: bucketName,
+        Key: objectKey,
+      });
+
+      // Generate a pre-signed URL that expires after the specified time
+      const signedUrl = await getSignedUrl(r2Client, command, { expiresIn: expiresInSeconds });
+
+      return signedUrl;
+    } catch (error) {
+      console.error('Failed to generate pre-signed URL:', error);
+      throw new Error(`Failed to generate pre-signed URL: ${error instanceof Error ? error.message : 'Unknown error'}`);
+    }
+  }
+
+  /**
+   * Extract the object key from an R2 URL
+   * @param r2Url - The full R2 URL
+   * @returns string - The object key
+   */
+  public static extractObjectKeyFromUrl(r2Url: string): string {
+    try {
+      // Parse the URL
+      const url = new URL(r2Url);
+
+      // Get the pathname
+      const pathname = url.pathname;
+
+      // Remove the leading slash and the bucket name if present
+      const bucketName = process.env.R2_BUCKET_NAME;
+      if (bucketName && pathname.startsWith(`/${bucketName}/`)) {
+        return pathname.substring(`/${bucketName}/`.length);
+      }
+
+      // If bucket name is not in the path, return the pathname without the leading slash
+      return pathname.startsWith('/') ? pathname.substring(1) : pathname;
+    } catch (error) {
+      console.error('Failed to extract object key from URL:', error);
+      // Return the original URL as fallback
+      return r2Url;
+    }
+  }
+
+  /**
    * Upload a file to Cloudflare R2
    * @param filePath - Local path to file
    * @param fileName - Original file name to use in R2
    * @param contentType - MIME type of the file
-   * @returns Promise<string> - Public URL of the uploaded file
+   * @returns Promise<{url: string, objectKey: string}> - Public URL and object key of the uploaded file
    */
-  public static async uploadFileToR2(filePath: string, fileName: string, contentType: string): Promise<string> {
+  public static async uploadFileToR2(filePath: string, fileName: string, contentType: string): Promise<{ url: string, objectKey: string }> {
     try {
       // Check that all required env variables are set
       const accessKeyId = process.env.R2_ACCESS_KEY_ID;
@@ -127,13 +186,18 @@ export class FileService {
       const result = await r2Client.send(command);
       console.log('File uploaded to R2 successfully:', result);
 
-      // Get the public URL format for Cloudflare R2
-      // The public URL needs to be formatted correctly to access the file
-      // For Cloudflare R2, this is typically:
-      // https://[CUSTOM_DOMAIN or PUBLIC_BUCKET_ENDPOINT]/[KEY]
+      // Store the object key for future reference
+      const objectKey = uniqueFileName;
 
-      // First try to use the endpoint directly 
-      let publicUrl: string = '';
+      // Generate a pre-signed URL that's valid for 24 hours (or customize as needed)
+      const presignedUrl = await this.generatePresignedUrl(objectKey);
+
+      console.log(`Generated pre-signed URL for R2 file: ${presignedUrl}`);
+
+      // We'll return both the direct R2 URL (for storage) and the object key
+
+      // Build the direct R2 URL (Note: this won't be accessible unless the bucket is public)
+      let directUrl: string = '';
 
       // Extract the base URL from the endpoint
       let baseUrl = endpoint;
@@ -146,18 +210,17 @@ export class FileService {
       // Check if the endpoint already has the bucket name included
       if (baseUrl.includes(bucketName)) {
         // If bucket is already part of the endpoint URL
-        publicUrl = `${baseUrl}/${uniqueFileName}`;
+        directUrl = `${baseUrl}/${objectKey}`;
       } else {
         // If bucket is not part of the endpoint URL
-        publicUrl = `${baseUrl}/${bucketName}/${uniqueFileName}`;
+        directUrl = `${baseUrl}/${bucketName}/${objectKey}`;
       }
 
-      console.log(`Generated public URL for R2 file: ${publicUrl}`);
-
-      // With Cloudflare R2, the URL structure depends on how the bucket is configured
-      // This might need adjustment based on how public access is set up for the bucket
-
-      return publicUrl;
+      // Return both the pre-signed URL and the object key
+      return {
+        url: presignedUrl,
+        objectKey
+      };
     } catch (error) {
       console.error('Failed to upload file to R2:', error);
 
@@ -205,16 +268,20 @@ export class FileService {
         : [];
 
       let r2Url = '';
+      let r2ObjectKey = '';
       let r2Error = null;
 
       // Upload file to Cloudflare R2
       try {
-        r2Url = await this.uploadFileToR2(
+        const r2Result = await this.uploadFileToR2(
           fileData.path,
           fileData.originalname,
           fileData.mimetype
         );
+        r2Url = r2Result.url;
+        r2ObjectKey = r2Result.objectKey;
         console.log('Successfully uploaded file to R2:', r2Url);
+        console.log('R2 Object Key:', r2ObjectKey);
       } catch (uploadError) {
         r2Error = uploadError;
         console.error('Failed to upload to R2:', uploadError);
@@ -232,7 +299,8 @@ export class FileService {
         userId: new Types.ObjectId(fileData.userId),
         isPublic: fileData.isPublic || false,
         tags: cleanTags,
-        r2Url: r2Url || undefined // Store R2 URL if available
+        r2Url: r2Url || undefined, // Store R2 URL if available
+        r2ObjectKey: r2ObjectKey || undefined // Store R2 object key if available
       });
 
       // Save and return the file

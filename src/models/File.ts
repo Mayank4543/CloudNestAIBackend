@@ -12,6 +12,7 @@ export interface IFile extends Document {
     createdAt: Date;
     tags: string[];
     r2Url?: string; // URL to file in Cloudflare R2 storage
+    r2ObjectKey?: string; // Object key in R2 bucket
 }
 
 // Mongoose schema for uploaded files
@@ -65,6 +66,10 @@ const FileSchema: Schema = new Schema({
         }
     },
     r2Url: {
+        type: String,
+        trim: true
+    },
+    r2ObjectKey: {
         type: String,
         trim: true
     }
