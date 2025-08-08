@@ -488,11 +488,26 @@ export class FileController {
 
             // Add URLs to search results - inline to avoid static method issues
             const filesWithUrls = result.files.map(file => {
-                const filename = extractFilename(file.path);
-                return {
-                    ...file,
-                    url: getFileUrl(filename, req)
-                };
+                try {
+                    // Use R2 URL if available, otherwise generate local URL
+                    if (file.r2Url) {
+                        return {
+                            ...file,
+                            url: file.r2Url,
+                            storedInR2: true
+                        };
+                    } else {
+                        const filename = extractFilename(file.path);
+                        return {
+                            ...file,
+                            url: getFileUrl(filename, req),
+                            storedInR2: false
+                        };
+                    }
+                } catch (err) {
+                    console.error('Error adding URL to file:', err);
+                    return file; // Return file without URL if there's an error
+                }
             });
 
             res.status(200).json({

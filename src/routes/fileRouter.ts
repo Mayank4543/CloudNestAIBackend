@@ -94,11 +94,22 @@ fileRouter.get('/access/:filename', async (req, res) => {
 
         // If file is public, allow access
         if (fileRecord.isPublic) {
+            // If stored in R2, redirect to R2 URL
+            if (fileRecord.r2Url) {
+                return res.redirect(fileRecord.r2Url);
+            }
+
+            // Otherwise, try to serve from local storage
             const uploadDir = getUploadDir();
             const fullPath = path.join(uploadDir, filename);
 
             if (fs.existsSync(fullPath)) {
                 return res.sendFile(fullPath);
+            } else {
+                return res.status(404).json({
+                    success: false,
+                    message: 'File not found on disk and no R2 URL available'
+                });
             }
         }
 
@@ -127,6 +138,13 @@ fileRouter.get('/access/:filename', async (req, res) => {
             }
 
             // User authorized, serve file
+
+            // If the file is stored in R2, redirect to the R2 URL
+            if (fileRecord.r2Url) {
+                return res.redirect(fileRecord.r2Url);
+            }
+
+            // Otherwise, try to serve from local disk
             const uploadDir = getUploadDir();
             const fullPath = path.join(uploadDir, filename);
 
@@ -135,7 +153,7 @@ fileRouter.get('/access/:filename', async (req, res) => {
             } else {
                 return res.status(404).json({
                     success: false,
-                    message: 'File not found on disk'
+                    message: 'File not found on disk and no R2 URL available'
                 });
             }
 
