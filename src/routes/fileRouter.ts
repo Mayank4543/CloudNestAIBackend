@@ -137,7 +137,7 @@ fileRouter.get('/access/:filename', async (req, res) => {
                 });
             }
 
-            // User authorized, serve file
+
 
             // If the file is stored in R2, redirect to the R2 URL
             if (fileRecord.r2Url) {
