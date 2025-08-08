@@ -2,9 +2,11 @@ import express from 'express';
 import multer from 'multer';
 import path from 'path';
 import fs from 'fs';
+import jwt from 'jsonwebtoken';
 import { FileController } from '../controller/FileController';
 import { authenticateToken } from '../middleware/authMiddleware';
 import { getUploadDir, ensureUploadDir } from '../utils/uploadPaths';
+import File from '../models/File';
 
 // Ensure upload directory exists on startup
 ensureUploadDir();
@@ -57,7 +59,7 @@ const storage = multer.diskStorage({
     }
 });// File filter for security (optional but recommended)
 const fileFilter = (req: express.Request, file: Express.Multer.File, cb: multer.FileFilterCallback) => {
- 
+
     cb(null, true);
 };
 
@@ -74,9 +76,91 @@ const upload = multer({
 // Simple routes - specific paths first, param routes last
 fileRouter.post('/upload', authenticateToken, upload.single('file'), FileController.uploadFile);
 fileRouter.get('/debug', FileController.getDebugInfo); // Debug endpoint
+
+// File access route with proper authentication - MUST be before /:id route
+fileRouter.get('/access/:filename', async (req, res) => {
+    try {
+        const filename = req.params.filename;
+
+        // Find file in database
+        const fileRecord = await File.findOne({ filename });
+
+        if (!fileRecord) {
+            return res.status(404).json({
+                success: false,
+                message: 'File not found'
+            });
+        }
+
+        // If file is public, allow access
+        if (fileRecord.isPublic) {
+            const uploadDir = getUploadDir();
+            const fullPath = path.join(uploadDir, filename);
+
+            if (fs.existsSync(fullPath)) {
+                return res.sendFile(fullPath);
+            }
+        }
+
+        // For private files, require authentication
+        const authHeader = req.headers.authorization;
+        const token = authHeader && authHeader.startsWith('Bearer ')
+            ? authHeader.substring(7)
+            : null;
+
+        if (!token) {
+            return res.status(401).json({
+                success: false,
+                message: 'Authentication required to access this private file'
+            });
+        }
+
+        // Verify token and check ownership
+        try {
+            const decoded = jwt.verify(token, process.env.JWT_SECRET || 'fallback-secret-key') as any;
+
+            if (fileRecord.userId.toString() !== decoded.userId) {
+                return res.status(403).json({
+                    success: false,
+                    message: 'You do not have permission to access this file'
+                });
+            }
+
+            // User authorized, serve file
+            const uploadDir = getUploadDir();
+            const fullPath = path.join(uploadDir, filename);
+
+            if (fs.existsSync(fullPath)) {
+                return res.sendFile(fullPath);
+            } else {
+                return res.status(404).json({
+                    success: false,
+                    message: 'File not found on disk'
+                });
+            }
+
+        } catch (jwtError) {
+            return res.status(401).json({
+                success: false,
+                message: 'Invalid authentication token'
+            });
+        }
+
+    } catch (error) {
+        console.error('File access error:', error);
+        return res.status(500).json({
+            success: false,
+            message: 'Internal server error'
+        });
+    }
+});
+
+// Other specific routes
 fileRouter.get('/', authenticateToken, FileController.getAllFiles);
 fileRouter.get('/search', authenticateToken, FileController.searchFiles);
 fileRouter.get('/stats', authenticateToken, FileController.getFileStats);
+
+// Generic param routes MUST come last
 fileRouter.get('/:id', authenticateToken, FileController.getFileById);
 fileRouter.delete('/:id', authenticateToken, FileController.deleteFile);
 fileRouter.put('/:id/tags', authenticateToken, FileController.updateFileTags);

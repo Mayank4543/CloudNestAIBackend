@@ -5,6 +5,7 @@ A robust personal cloud storage backend built with **Node.js**, **TypeScript**, 
 ## 🚀 Features
 
 ### 🔐 Authentication & Security
+
 - **JWT Authentication** with secure token-based sessions
 - **Google OAuth 2.0** integration for seamless login
 - **bcrypt** password hashing
@@ -12,6 +13,7 @@ A robust personal cloud storage backend built with **Node.js**, **TypeScript**, 
 - **File ownership validation** and access control
 
 ### 📁 File Management
+
 - **Multi-format file upload** with Multer middleware
 - **File metadata storage** in MongoDB
 - **Public/Private file sharing** capabilities
@@ -21,12 +23,14 @@ A robust personal cloud storage backend built with **Node.js**, **TypeScript**, 
 - **Bulk operations** support
 
 ### 🗃️ Database & Storage
+
 - **MongoDB** with Mongoose ODM
 - **Optimized queries** with proper indexing
 - **File system storage** with organized directory structure
 - **Robust error handling** and data validation
 
 ### 🌐 API Features
+
 - **RESTful API design**
 - **Comprehensive pagination**
 - **Advanced filtering** (by mimetype, tags, date)
@@ -79,7 +83,7 @@ PORT=4000
 NODE_ENV=development
 
 # MongoDB Configuration
-MONGODB_URI=mongodb+srv://your-username:your-password@cluster0.xyz.mongodb.net/cloudnestAi
+MONGODB_URI=mongodb+srv://your-username:your-password@cluster0.awx.mongodb.net/database_name
 
 # CORS Configuration (comma-separated origins)
 CORS_ORIGIN=http://localhost:3000,http://localhost:5173,http://localhost:8080
@@ -106,11 +110,13 @@ npm run build
 ### 5. Start the Server
 
 For development:
+
 ```bash
 npm run dev
 ```
 
 For production:
+
 ```bash
 npm start
 ```
@@ -120,6 +126,7 @@ The server will be running at `http://localhost:4000`
 ## 📊 API Documentation
 
 ### Base URL
+
 ```
 http://localhost:4000/api
 ```
@@ -127,6 +134,7 @@ http://localhost:4000/api
 ### Authentication Endpoints
 
 #### Register User
+
 ```http
 POST /api/auth/register
 Content-Type: application/json
@@ -139,6 +147,7 @@ Content-Type: application/json
 ```
 
 #### Login User
+
 ```http
 POST /api/auth/login
 Content-Type: application/json
@@ -150,6 +159,7 @@ Content-Type: application/json
 ```
 
 #### Google OAuth Login
+
 ```http
 POST /api/auth/google
 Content-Type: application/json
@@ -159,9 +169,34 @@ Content-Type: application/json
 }
 ```
 
+#### Forgot Password
+
+```http
+POST /api/auth/forgot-password
+Content-Type: application/json
+
+{
+  "email": "user@example.com"
+}
+```
+
+#### Reset Password
+
+```http
+POST /api/auth/reset-password
+Content-Type: application/json
+
+{
+  "token": "reset-token-from-forgot-password",
+  "password": "newSecurePassword123",
+  "confirmPassword": "newSecurePassword123"
+}
+```
+
 ### File Management Endpoints
 
 #### Upload File
+
 ```http
 POST /api/files/upload
 Authorization: Bearer <jwt-token>
@@ -175,24 +210,28 @@ Content-Type: multipart/form-data
 ```
 
 #### Get All Files
+
 ```http
 GET /api/files?page=1&limit=10&mimetype=image&tags=photo,document&sortBy=createdAt&sortOrder=desc
 Authorization: Bearer <jwt-token>
 ```
 
 #### Get File by ID
+
 ```http
 GET /api/files/:fileId
 Authorization: Bearer <jwt-token>
 ```
 
 #### Search Files
+
 ```http
 GET /api/files/search?q=searchTerm&page=1&limit=10
 Authorization: Bearer <jwt-token>
 ```
 
 #### Update File Tags
+
 ```http
 PUT /api/files/:fileId/tags
 Authorization: Bearer <jwt-token>
@@ -204,6 +243,7 @@ Content-Type: application/json
 ```
 
 #### Update File Public Status
+
 ```http
 PUT /api/files/:fileId/public
 Authorization: Bearer <jwt-token>
@@ -215,25 +255,36 @@ Content-Type: application/json
 ```
 
 #### Delete File
+
 ```http
 DELETE /api/files/:fileId
 Authorization: Bearer <jwt-token>
 ```
 
 #### Get File Statistics
+
 ```http
 GET /api/files/stats
 Authorization: Bearer <jwt-token>
 ```
 
+#### Access File (Secure)
+
+```http
+GET /api/files/access/:filename
+Authorization: Bearer <jwt-token> (required for private files)
+```
+
 ### Utility Endpoints
 
 #### Health Check
+
 ```http
 GET /health
 ```
 
 #### Debug Information
+
 ```http
 GET /api/files/debug
 ```
@@ -308,6 +359,7 @@ npm run test:coverage
 ### Manual Deployment
 
 1. Build the project:
+
    ```bash
    npm run build
    ```
@@ -321,18 +373,18 @@ npm run test:coverage
 
 ## 📝 Environment Variables
 
-| Variable | Description | Default | Required |
-|----------|-------------|---------|----------|
-| `PORT` | Server port | 3000 | No |
-| `NODE_ENV` | Environment | development | No |
-| `MONGODB_URI` | MongoDB connection string | - | Yes |
-| `CORS_ORIGIN` | Allowed CORS origins | - | Yes |
-| `MAX_FILE_SIZE` | Max upload size in bytes | 10485760 | No |
-| `UPLOAD_DIR` | File storage directory | ./src/upload | No |
-| `JWT_SECRET` | JWT signing secret | - | Yes |
-| `JWT_EXPIRES_IN` | JWT expiration time | 7d | No |
-| `GOOGLE_CLIENT_ID` | Google OAuth client ID | - | Yes |
-| `GOOGLE_CLIENT_SECRET` | Google OAuth client secret | - | Yes |
+| Variable               | Description                | Default      | Required |
+| ---------------------- | -------------------------- | ------------ | -------- |
+| `PORT`                 | Server port                | 3000         | No       |
+| `NODE_ENV`             | Environment                | development  | No       |
+| `MONGODB_URI`          | MongoDB connection string  | -            | Yes      |
+| `CORS_ORIGIN`          | Allowed CORS origins       | -            | Yes      |
+| `MAX_FILE_SIZE`        | Max upload size in bytes   | 10485760     | No       |
+| `UPLOAD_DIR`           | File storage directory     | ./src/upload | No       |
+| `JWT_SECRET`           | JWT signing secret         | -            | Yes      |
+| `JWT_EXPIRES_IN`       | JWT expiration time        | 7d           | No       |
+| `GOOGLE_CLIENT_ID`     | Google OAuth client ID     | -            | Yes      |
+| `GOOGLE_CLIENT_SECRET` | Google OAuth client secret | -            | Yes      |
 
 ## 🔧 Development Scripts
 
@@ -396,6 +448,7 @@ This project is licensed under the ISC License.
 ## 👨‍💻 Author
 
 **Mayank Rathore**
+
 - GitHub: [@Mayank4543](https://github.com/Mayank4543)
 
 ## 🙏 Acknowledgments

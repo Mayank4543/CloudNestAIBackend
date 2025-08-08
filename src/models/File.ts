@@ -11,6 +11,7 @@ export interface IFile extends Document {
     isPublic: boolean;
     createdAt: Date;
     tags: string[];
+    r2Url?: string; // URL to file in Cloudflare R2 storage
 }
 
 // Mongoose schema for uploaded files
@@ -62,6 +63,10 @@ const FileSchema: Schema = new Schema({
             },
             message: 'Tags cannot be empty strings'
         }
+    },
+    r2Url: {
+        type: String,
+        trim: true
     }
 }, {
     timestamps: true, // This adds createdAt and updatedAt automatically

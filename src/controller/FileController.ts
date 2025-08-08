@@ -89,7 +89,7 @@ export class FileController {
 
 
             const filename = extractFilename(savedFile.path);
-            const fileUrl = getFileUrl(filename, req);
+            const fileUrl = savedFile.r2Url || getFileUrl(filename, req);
 
             // Return file metadata
             res.status(201).json({
@@ -102,11 +102,12 @@ export class FileController {
                     mimetype: savedFile.mimetype,
                     size: savedFile.size,
                     path: savedFile.path,
-                    url: fileUrl, // Public URL for accessing the file
+                    url: fileUrl, // R2 URL if available, otherwise local URL
                     userId: savedFile.userId,
                     isPublic: savedFile.isPublic,
                     createdAt: savedFile.createdAt,
-                    tags: savedFile.tags
+                    tags: savedFile.tags,
+                    storedInR2: !!savedFile.r2Url
                 }
             });
 
@@ -123,7 +124,6 @@ export class FileController {
     // Fetch all uploaded files from MongoDB
     public static async getAllFiles(req: Request, res: Response): Promise<void> {
         try {
-            console.log('🚀 getAllFiles method called');
 
             // Check if user is authenticated
             if (!req.user || !req.user._id) {
@@ -134,7 +134,7 @@ export class FileController {
                 return;
             }
 
-            console.log('✅ User authenticated:', req.user._id);
+
 
             // Extract query parameters for pagination and filtering
             const page = parseInt(req.query.page as string) || 1;
@@ -169,11 +169,11 @@ export class FileController {
 
             // Get files using service
             const result = await FileService.getFiles(queryOptions);
-            console.log('📁 Files retrieved from service. Result:', result);
+
 
             // Validate that result and files array exist
             if (!result || !result.files) {
-                console.error('❌ Invalid result from FileService.getFiles:', result);
+
                 res.status(500).json({
                     success: false,
                     message: 'Error retrieving files from database',
@@ -182,22 +182,31 @@ export class FileController {
                 return;
             }
 
-            console.log('📁 Files retrieved from service:', result.files.length);
 
             // Add URLs to all files - directly inline to avoid any static method issues
             const filesWithUrls = result.files.map((file: any) => {
                 try {
-                    const filename = extractFilename(file.path);
-                    return {
-                        ...file,
-                        url: getFileUrl(filename, req)
-                    };
+                    // Use R2 URL if available, otherwise generate local URL
+                    if (file.r2Url) {
+                        return {
+                            ...file,
+                            url: file.r2Url,
+                            storedInR2: true
+                        };
+                    } else {
+                        const filename = extractFilename(file.path);
+                        return {
+                            ...file,
+                            url: getFileUrl(filename, req),
+                            storedInR2: false
+                        };
+                    }
                 } catch (err) {
                     console.error('Error adding URL to file:', err);
                     return file; // Return file without URL if there's an error
                 }
             });
-            console.log('✅ URLs added successfully, result count:', filesWithUrls.length);
+
 
             // Return files with pagination info
             res.status(200).json({
@@ -241,12 +250,22 @@ export class FileController {
                 return;
             }
 
-            // Add URL to file inline
-            const filename = extractFilename(file.path);
-            const fileWithUrl = {
-                ...file,
-                url: getFileUrl(filename, req)
-            };
+            // Add URL to file inline - use R2 URL if available, otherwise local URL
+            let fileWithUrl;
+            if (file.r2Url) {
+                fileWithUrl = {
+                    ...file,
+                    url: file.r2Url,
+                    storedInR2: true
+                };
+            } else {
+                const filename = extractFilename(file.path);
+                fileWithUrl = {
+                    ...file,
+                    url: getFileUrl(filename, req),
+                    storedInR2: false
+                };
+            }
 
             res.status(200).json({
                 success: true,

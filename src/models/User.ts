@@ -1,5 +1,6 @@
 import mongoose, { Document, Schema } from 'mongoose';
 import bcrypt from 'bcryptjs';
+import crypto from 'crypto';
 
 // Interface for User document
 export interface IUser extends Document {
@@ -8,11 +9,13 @@ export interface IUser extends Document {
     email: string;
     password?: string; // Optional for Google OAuth users
     picture?: string; // Profile picture URL for Google OAuth users
+    passwordResetToken?: string;
+    passwordResetExpires?: Date;
     createdAt: Date;
     updatedAt: Date;
 
-
     comparePassword(candidatePassword: string): Promise<boolean>;
+    createPasswordResetToken(): string;
     toJSON(): Partial<IUser>;
 }
 
@@ -52,6 +55,16 @@ const UserSchema = new Schema<IUser>(
             type: String,
             required: false, // Optional profile picture URL
             trim: true
+        },
+        passwordResetToken: {
+            type: String,
+            required: false,
+            select: false // Don't include in queries by default
+        },
+        passwordResetExpires: {
+            type: Date,
+            required: false,
+            select: false // Don't include in queries by default
         }
     },
     {
@@ -89,6 +102,21 @@ UserSchema.methods.comparePassword = async function (candidatePassword: string):
     } catch (error) {
         throw new Error('Password comparison failed');
     }
+};
+
+// Instance method to create password reset token
+UserSchema.methods.createPasswordResetToken = function (): string {
+    // Generate random token
+    const resetToken = crypto.randomBytes(32).toString('hex');
+
+    // Hash token and set to passwordResetToken field
+    this.passwordResetToken = crypto.createHash('sha256').update(resetToken).digest('hex');
+
+    // Set expire time (10 minutes)
+    this.passwordResetExpires = new Date(Date.now() + 10 * 60 * 1000);
+
+    // Return plain token (not hashed)
+    return resetToken;
 };
 
 // Override toJSON to remove password from response

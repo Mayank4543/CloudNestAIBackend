@@ -53,18 +53,25 @@ export const getStaticServePath = (): string => {
 };
 
 /**
- * Generate a public URL for accessing an uploaded file
+ * Generate a public URL for accessing an uploaded file through the secure access route
  * @param filename - The filename of the uploaded file
  * @param req - Express request object (optional, for dynamic host detection)
+ * @param useSecureRoute - Whether to use the secure access route (default: true)
  */
-export const getFileUrl = (filename: string, req?: any): string => {
+export const getFileUrl = (filename: string, req?: any, useSecureRoute: boolean = true): string => {
     const baseUrl = req
         ? `${req.protocol}://${req.get('host')}`
-        : process.env.BASE_URL || 'http://localhost:3000';
+        : process.env.BASE_URL || 'http://localhost:4000';
 
-    return `${baseUrl}/uploads/${filename}`;
+    if (useSecureRoute) {
+        // Use the secure access route that checks permissions
+        return `${baseUrl}/api/files/access/${filename}`;
+    } else {
+        // Use direct access (not recommended for production)
+        return `${baseUrl}/uploads/${filename}`;
+    }
 };
-
+                                        
 /**
  * Extract filename from full file path
  * @param filePath - Full path to the file

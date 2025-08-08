@@ -1,5 +1,8 @@
 import File, { IFile } from '../models/File';
 import { FilterQuery, Types } from 'mongoose';
+import { S3Client, PutObjectCommand } from '@aws-sdk/client-s3';
+import fs from 'fs';
+import path from 'path';
 
 // Interface for file creation data
 export interface CreateFileData {
@@ -11,6 +14,7 @@ export interface CreateFileData {
   userId: string;
   isPublic?: boolean;
   tags?: string[];
+  r2Key?: string; // Optional field to store R2 object key
 }
 
 // Interface for file query options
@@ -57,6 +61,124 @@ export interface FileStats {
 export class FileService {
 
   /**
+   * Configure S3 client for Cloudflare R2
+   */
+  private static getR2Client(): S3Client {
+    const accessKeyId = process.env.R2_ACCESS_KEY_ID;
+    const secretAccessKey = process.env.R2_SECRET_ACCESS_KEY;
+    const endpoint = process.env.R2_ENDPOINT;
+
+    if (!accessKeyId || !secretAccessKey || !endpoint) {
+      throw new Error('Missing required Cloudflare R2 configuration');
+    }
+
+    return new S3Client({
+      region: 'auto', // Cloudflare R2 uses 'auto' for region
+      endpoint,
+      credentials: {
+        accessKeyId,
+        secretAccessKey,
+      },
+      forcePathStyle: true, // Required for Cloudflare R2
+    });
+  }
+
+  /**
+   * Upload a file to Cloudflare R2
+   * @param filePath - Local path to file
+   * @param fileName - Original file name to use in R2
+   * @param contentType - MIME type of the file
+   * @returns Promise<string> - Public URL of the uploaded file
+   */
+  public static async uploadFileToR2(filePath: string, fileName: string, contentType: string): Promise<string> {
+    try {
+      // Check that all required env variables are set
+      const accessKeyId = process.env.R2_ACCESS_KEY_ID;
+      const secretAccessKey = process.env.R2_SECRET_ACCESS_KEY;
+      const endpoint = process.env.R2_ENDPOINT;
+      const bucketName = process.env.R2_BUCKET_NAME;
+
+      if (!accessKeyId || !secretAccessKey || !endpoint || !bucketName) {
+        throw new Error('Missing required Cloudflare R2 configuration');
+      }
+
+      const r2Client = this.getR2Client();
+
+      // Generate a unique key for the file in R2 (with original filename)
+      // Use path.basename to get filename without path
+      const fileBaseName = path.basename(fileName);
+      const uniqueFileName = `${Date.now()}-${fileBaseName}`;
+
+      // Read file content
+      const fileContent = fs.readFileSync(filePath);
+
+      console.log(`Uploading file to R2: ${uniqueFileName}`);
+      console.log(`Bucket: ${bucketName}`);
+      console.log(`Content Type: ${contentType}`);
+
+      // Upload to R2
+      const command = new PutObjectCommand({
+        Bucket: bucketName,
+        Key: uniqueFileName,
+        Body: fileContent,
+        ContentType: contentType,
+      });
+
+      const result = await r2Client.send(command);
+      console.log('File uploaded to R2 successfully:', result);
+
+      // Get the public URL format for Cloudflare R2
+      // The public URL needs to be formatted correctly to access the file
+      // For Cloudflare R2, this is typically:
+      // https://[CUSTOM_DOMAIN or PUBLIC_BUCKET_ENDPOINT]/[KEY]
+
+      // First try to use the endpoint directly 
+      let publicUrl: string = '';
+
+      // Extract the base URL from the endpoint
+      let baseUrl = endpoint;
+
+      // Remove trailing slash from baseUrl if present
+      if (baseUrl.endsWith('/')) {
+        baseUrl = baseUrl.slice(0, -1);
+      }
+
+      // Check if the endpoint already has the bucket name included
+      if (baseUrl.includes(bucketName)) {
+        // If bucket is already part of the endpoint URL
+        publicUrl = `${baseUrl}/${uniqueFileName}`;
+      } else {
+        // If bucket is not part of the endpoint URL
+        publicUrl = `${baseUrl}/${bucketName}/${uniqueFileName}`;
+      }
+
+      console.log(`Generated public URL for R2 file: ${publicUrl}`);
+
+      // With Cloudflare R2, the URL structure depends on how the bucket is configured
+      // This might need adjustment based on how public access is set up for the bucket
+
+      return publicUrl;
+    } catch (error) {
+      console.error('Failed to upload file to R2:', error);
+
+      // Check for specific error types from AWS SDK to provide better error messages
+      const errorMessage = error instanceof Error ? error.message : 'Unknown error';
+
+      if (errorMessage.includes('InvalidAccessKeyId')) {
+        throw new Error('Invalid R2 access key ID. Please check your R2_ACCESS_KEY_ID environment variable.');
+      } else if (errorMessage.includes('SignatureDoesNotMatch')) {
+        throw new Error('Invalid R2 secret key. Please check your R2_SECRET_ACCESS_KEY environment variable.');
+      } else if (errorMessage.includes('NoSuchBucket')) {
+        throw new Error(`The bucket '${process.env.R2_BUCKET_NAME}' does not exist or you don't have permission to access it.`);
+      } else if (errorMessage.includes('NetworkingError') || errorMessage.includes('ENOTFOUND')) {
+        throw new Error(`Could not connect to R2 endpoint at '${process.env.R2_ENDPOINT}'. Please check your network connection or R2_ENDPOINT value.`);
+      } else {
+        throw new Error(`Failed to upload file to R2: ${errorMessage}`);
+      }
+    }
+  }
+
+  /**
    * Save a new file document to the database
    * @param fileData - File data to save
    * @returns Promise<IFile> - Saved file document
@@ -82,6 +204,24 @@ export class FileService {
         ? fileData.tags.filter(tag => tag.trim().length > 0).map(tag => tag.trim().toLowerCase())
         : [];
 
+      let r2Url = '';
+      let r2Error = null;
+
+      // Upload file to Cloudflare R2
+      try {
+        r2Url = await this.uploadFileToR2(
+          fileData.path,
+          fileData.originalname,
+          fileData.mimetype
+        );
+        console.log('Successfully uploaded file to R2:', r2Url);
+      } catch (uploadError) {
+        r2Error = uploadError;
+        console.error('Failed to upload to R2:', uploadError);
+        // Continue with local file storage as fallback
+        console.log('Continuing with local file storage as fallback');
+      }
+
       // Create new file document
       const newFile = new File({
         filename: fileData.filename,
@@ -91,7 +231,8 @@ export class FileService {
         path: fileData.path,
         userId: new Types.ObjectId(fileData.userId),
         isPublic: fileData.isPublic || false,
-        tags: cleanTags
+        tags: cleanTags,
+        r2Url: r2Url || undefined // Store R2 URL if available
       });
 
       // Save and return the file

@@ -1,5 +1,6 @@
 import { Request, Response } from 'express';
 import jwt from 'jsonwebtoken';
+import crypto from 'crypto';
 import { OAuth2Client } from 'google-auth-library';
 import User, { IUser } from '../models/User';
 
@@ -19,6 +20,18 @@ interface LoginRequest {
 // Interface for Google login request
 interface GoogleLoginRequest {
     token: string;
+}
+
+// Interface for forgot password request
+interface ForgotPasswordRequest {
+    email: string;
+}
+
+// Interface for reset password request
+interface ResetPasswordRequest {
+    token: string;
+    password: string;
+    confirmPassword: string;
 }
 
 // Interface for JWT payload
@@ -346,6 +359,155 @@ export class AuthController {
             success: true,
             message: 'Logout successful. Please remove the token from client storage.'
         });
+    }
+
+    /**
+     * Forgot Password - Send reset token
+     * @route POST /api/auth/forgot-password
+     * @body { email }
+     */
+    public static async forgotPassword(req: Request, res: Response): Promise<void> {
+        try {
+            const { email }: ForgotPasswordRequest = req.body;
+
+            // Validate required fields
+            if (!email) {
+                res.status(400).json({
+                    success: false,
+                    message: 'Email is required'
+                });
+                return;
+            }
+
+            // Find user by email
+            const user = await User.findOne({ email: email.toLowerCase() });
+            if (!user) {
+                // For security, don't reveal if email exists
+                res.status(200).json({
+                    success: true,
+                    message: 'If an account with that email exists, a password reset link has been sent.'
+                });
+                return;
+            }
+
+            // Check if user has a password (not Google OAuth only)
+            if (!user.password) {
+                res.status(400).json({
+                    success: false,
+                    message: 'This account uses Google OAuth. Please sign in with Google.'
+                });
+                return;
+            }
+
+            // Generate password reset token
+            const resetToken = user.createPasswordResetToken();
+            await user.save({ validateBeforeSave: false });
+
+            // In a real application, you would send this token via email
+            // For development, we'll return it in the response
+            const resetURL = `${req.protocol}://${req.get('host')}/api/auth/reset-password?token=${resetToken}`;
+
+            // TODO: Send email with resetURL
+            // For now, return success response
+            res.status(200).json({
+                success: true,
+                message: 'Password reset token generated successfully',
+                data: {
+                    resetToken, // Remove this in production
+                    resetURL,   // Remove this in production
+                    expiresIn: '10 minutes'
+                }
+            });
+
+        } catch (error) {
+            console.error('Forgot password error:', error);
+            res.status(500).json({
+                success: false,
+                message: 'Internal server error during password reset request'
+            });
+        }
+    }
+
+    /**
+     * Reset Password - Verify token and set new password
+     * @route POST /api/auth/reset-password
+     * @body { token, password, confirmPassword }
+     */
+    public static async resetPassword(req: Request, res: Response): Promise<void> {
+        try {
+            const { token, password, confirmPassword }: ResetPasswordRequest = req.body;
+
+            // Validate required fields
+            if (!token || !password || !confirmPassword) {
+                res.status(400).json({
+                    success: false,
+                    message: 'Token, password, and confirm password are required'
+                });
+                return;
+            }
+
+            // Validate password match
+            if (password !== confirmPassword) {
+                res.status(400).json({
+                    success: false,
+                    message: 'Passwords do not match'
+                });
+                return;
+            }
+
+            // Validate password strength
+            if (password.length < 6) {
+                res.status(400).json({
+                    success: false,
+                    message: 'Password must be at least 6 characters long'
+                });
+                return;
+            }
+
+            // Hash the token to match stored hash
+            const hashedToken = crypto.createHash('sha256').update(token).digest('hex');
+
+            // Find user with valid reset token
+            const user = await User.findOne({
+                passwordResetToken: hashedToken,
+                passwordResetExpires: { $gt: new Date() }
+            }).select('+passwordResetToken +passwordResetExpires');
+
+            if (!user) {
+                res.status(400).json({
+                    success: false,
+                    message: 'Token is invalid or has expired'
+                });
+                return;
+            }
+
+            // Set new password and clear reset token fields
+            user.password = password;
+            user.passwordResetToken = undefined;
+            user.passwordResetExpires = undefined;
+
+            // Save user (password will be hashed by pre-save middleware)
+            await user.save();
+
+            // Generate new JWT token
+            const jwtToken = AuthController.generateToken(user);
+
+            res.status(200).json({
+                success: true,
+                message: 'Password reset successful',
+                data: {
+                    user: user.toJSON(),
+                    token: jwtToken
+                }
+            });
+
+        } catch (error) {
+            console.error('Reset password error:', error);
+            res.status(500).json({
+                success: false,
+                message: 'Internal server error during password reset'
+            });
+        }
     }
 }
 

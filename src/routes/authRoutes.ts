@@ -60,4 +60,20 @@ router.get('/profile', authenticateToken, AuthController.getProfile);
  */
 router.post('/logout', authenticateToken, AuthController.logout);
 
+/**
+ * @route POST /api/auth/forgot-password
+ * @desc Send password reset token
+ * @access Public
+ * @body { email }
+ */
+router.post('/forgot-password', AuthController.forgotPassword);
+
+/**
+ * @route POST /api/auth/reset-password
+ * @desc Reset password using token
+ * @access Public
+ * @body { token, password, confirmPassword }
+ */
+router.post('/reset-password', AuthController.resetPassword);
+
 export default router;
