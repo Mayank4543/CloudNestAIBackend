@@ -69,14 +69,29 @@ export class FileService {
     const accessKeyId = process.env.R2_ACCESS_KEY_ID;
     const secretAccessKey = process.env.R2_SECRET_ACCESS_KEY;
     const endpoint = process.env.R2_ENDPOINT;
+    const bucketName = process.env.R2_BUCKET_NAME;
 
-    if (!accessKeyId || !secretAccessKey || !endpoint) {
+    if (!accessKeyId || !secretAccessKey || !endpoint || !bucketName) {
       throw new Error('Missing required Cloudflare R2 configuration');
+    }
+
+    // Log R2 configuration for debugging
+    console.log('Creating R2 client with configuration:');
+    console.log(`- Endpoint: ${endpoint}`);
+    console.log(`- Bucket: ${bucketName}`);
+    console.log(`- Access Key defined: ${!!accessKeyId}`);
+    console.log(`- Secret Key defined: ${!!secretAccessKey}`);
+
+    // Make sure endpoint doesn't include bucket name
+    let cleanEndpoint = endpoint;
+    if (cleanEndpoint.includes(`/${bucketName}`)) {
+      console.warn('Endpoint contains bucket name, removing it');
+      cleanEndpoint = cleanEndpoint.split(`/${bucketName}`)[0];
     }
 
     return new S3Client({
       region: 'auto', // Cloudflare R2 uses 'auto' for region
-      endpoint,
+      endpoint: cleanEndpoint,
       credentials: {
         accessKeyId,
         secretAccessKey,
@@ -149,6 +164,11 @@ export class FileService {
    */
   public static extractObjectKeyFromUrl(r2Url: string): string {
     try {
+      // If the URL appears to be just a filename (not a full URL), return it as is
+      if (!r2Url.includes('://') && !r2Url.startsWith('/')) {
+        return r2Url;
+      }
+
       // Parse the URL
       const url = new URL(r2Url);
 
@@ -161,11 +181,37 @@ export class FileService {
         return pathname.substring(`/${bucketName}/`.length);
       }
 
+      // Check for timestamp-filename pattern which is likely the object key
+      const pathParts = pathname.split('/').filter(p => p);
+      for (const part of pathParts) {
+        // Look for our filename pattern: timestamp-filename
+        if (/^\d+-.*$/.test(part)) {
+          return part;
+        }
+      }
+
+      // If no timestamp pattern found, use the last path segment
+      if (pathParts.length > 0) {
+        return pathParts[pathParts.length - 1];
+      }
+
       // If bucket name is not in the path, return the pathname without the leading slash
       return pathname.startsWith('/') ? pathname.substring(1) : pathname;
     } catch (error) {
       console.error('Failed to extract object key from URL:', error);
-      // Return the original URL as fallback
+
+      // Try a fallback regex approach for direct URLs
+      try {
+        // Look for timestamp-filename pattern in the URL
+        const match = r2Url.match(/(\d+-[^?&/]+)/);
+        if (match && match[1]) {
+          return match[1];
+        }
+      } catch (regexError) {
+        console.error('Regex fallback failed:', regexError);
+      }
+
+      // Return the original URL as last-resort fallback
       return r2Url;
     }
   }
@@ -313,10 +359,13 @@ export class FileService {
           console.log('Successfully uploaded file to R2 from disk:', r2Url);
           console.log('R2 Object Key:', r2ObjectKey);
 
-          // Optionally delete the local file after successful R2 upload
+          // Always try to delete the local file after successful R2 upload
+          // It's not needed anymore and will just take up disk space
           try {
-            fs.unlinkSync(fileData.path);
-            console.log('Deleted local file after R2 upload:', fileData.path);
+            if (fs.existsSync(fileData.path)) {
+              fs.unlinkSync(fileData.path);
+              console.log('Deleted local file after R2 upload:', fileData.path);
+            }
           } catch (unlinkError) {
             console.error('Failed to delete local file:', unlinkError);
             // Non-critical error, continue
@@ -340,8 +389,8 @@ export class FileService {
         userId: new Types.ObjectId(fileData.userId),
         isPublic: fileData.isPublic || false,
         tags: cleanTags,
-        r2Url: r2Url || undefined, // Store R2 URL if available
-        r2ObjectKey: r2ObjectKey || undefined // Store R2 object key if available
+        r2Url: r2Url || null, // Always store R2 URL, null if not available
+        r2ObjectKey: r2ObjectKey || null // Always store R2 object key, null if not available
       });
 
       // Save and return the file
