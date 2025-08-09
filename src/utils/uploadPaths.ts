@@ -59,6 +59,11 @@ export const getStaticServePath = (): string => {
  * @param useSecureRoute - Whether to use the secure access route (default: true)
  */
 export const getFileUrl = (filename: string, req?: any, useSecureRoute: boolean = true): string => {
+    // If the filename appears to be a full URL (e.g., R2 URL), return it directly
+    if (filename.startsWith('http://') || filename.startsWith('https://')) {
+        return filename;
+    }
+
     const baseUrl = req
         ? `${req.protocol}://${req.get('host')}`
         : process.env.BASE_URL || 'http://localhost:4000';
@@ -71,7 +76,7 @@ export const getFileUrl = (filename: string, req?: any, useSecureRoute: boolean 
         return `${baseUrl}/uploads/${filename}`;
     }
 };
-                                        
+
 /**
  * Extract filename from full file path
  * @param filePath - Full path to the file

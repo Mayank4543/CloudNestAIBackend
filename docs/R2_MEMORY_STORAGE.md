@@ -61,7 +61,24 @@ R2_BUCKET_NAME=your-bucket-name
 
 ## Testing
 
-A test script is provided at `src/tests/memory_upload_test.js` to verify that uploads are working correctly with memory storage and R2.
+Two test scripts are provided:
+
+1. `src/tests/memory_upload_test.js` - Verifies that uploads are working correctly with memory storage and R2.
+2. `src/tests/public_private_test.js` - Tests the public/private toggle functionality to ensure it works properly even after server restarts.
+
+### Public/Private File Access
+
+The system supports toggling files between public and private access states:
+
+- **Public files**: Can be accessed by anyone with the file URL
+- **Private files**: Require authentication with a valid JWT token to access
+- **Persistence**: The public/private status is stored in MongoDB and remains intact after server restarts
+
+When a file is toggled between public and private:
+
+1. The database record is updated with the new `isPublic` value
+2. Access control is enforced at the `/api/files/access/:filename` endpoint
+3. New presigned URLs are generated when accessing the file
 
 ## Benefits of This Approach
 

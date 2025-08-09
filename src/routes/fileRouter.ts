@@ -65,7 +65,7 @@ fileRouter.get('/access/:filename', async (req, res) => {
         if (!fileRecord) {
             return res.status(404).json({
                 success: false,
-                message: 'File not found'
+                message: 'File not found in database'
             });
         }
 
@@ -103,25 +103,43 @@ fileRouter.get('/access/:filename', async (req, res) => {
         }
 
         // At this point, access is granted
-        // Files should be in R2 now, so generate a presigned URL
+        // Try R2 access first using object key for most reliable access
         if (fileRecord.r2ObjectKey) {
             try {
+                console.log(`Generating presigned URL for object key: ${fileRecord.r2ObjectKey}`);
                 // Generate a fresh presigned URL that's valid for 24 hours
                 const presignedUrl = await FileService.generatePresignedUrl(fileRecord.r2ObjectKey);
+                console.log(`Generated presigned URL: ${presignedUrl}`);
                 return res.redirect(presignedUrl);
             } catch (presignError) {
-                console.error('Error generating presigned URL:', presignError);
-                // If we have a stored URL as fallback, use that
-                if (fileRecord.r2Url) {
-                    return res.redirect(fileRecord.r2Url);
-                }
+                console.error('Error generating presigned URL from object key:', presignError);
+                // Continue to next fallback
             }
         }
 
-        // If we get here, no R2 access was possible
+        // If object key failed but we have a stored R2 URL, try that
+        if (fileRecord.r2Url) {
+            console.log(`Using stored R2 URL: ${fileRecord.r2Url}`);
+            return res.redirect(fileRecord.r2Url);
+        }
+
+        // Last resort: try local disk (for backward compatibility)
+        try {
+            const uploadDir = getUploadDir();
+            const fullPath = path.join(uploadDir, filename);
+
+            if (fs.existsSync(fullPath)) {
+                console.log(`Serving file from local disk: ${fullPath}`);
+                return res.sendFile(fullPath);
+            }
+        } catch (diskError) {
+            console.error('Error accessing local file:', diskError);
+        }
+
+        // If we get here, no access method worked
         return res.status(404).json({
             success: false,
-            message: 'File not found in cloud storage'
+            message: 'File not found in storage'
         });
 
     } catch (error) {

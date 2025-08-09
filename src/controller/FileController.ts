@@ -417,10 +417,31 @@ export class FileController {
                 return;
             }
 
+            // Add URL to updated file object for response
+            let fileUrl;
+
+            if (updatedFile.r2ObjectKey) {
+                try {
+                    // Generate a fresh presigned URL that's valid for 24 hours
+                    fileUrl = await FileService.generatePresignedUrl(updatedFile.r2ObjectKey);
+                } catch (presignError) {
+                    console.error('Error generating presigned URL:', presignError);
+                    // If we have a stored URL as fallback, use that
+                    fileUrl = updatedFile.r2Url;
+                }
+            } else {
+                const filename = extractFilename(updatedFile.path);
+                fileUrl = getFileUrl(filename, req);
+            }
+
             res.status(200).json({
                 success: true,
                 message: `File ${isPublic ? 'made public' : 'made private'} successfully`,
-                data: updatedFile
+                data: {
+                    ...updatedFile.toObject(),
+                    url: fileUrl,
+                    storedInR2: !!updatedFile.r2ObjectKey
+                }
             });
 
         } catch (error) {

@@ -93,12 +93,20 @@ export class FileService {
    */
   public static async generatePresignedUrl(objectKey: string, expiresInSeconds: number = 86400): Promise<string> {
     try {
+      if (!objectKey) {
+        throw new Error('Object key is required for generating a presigned URL');
+      }
+
+      console.log(`Generating presigned URL for object: ${objectKey}`);
+
       const r2Client = this.getR2Client();
       const bucketName = process.env.R2_BUCKET_NAME;
 
       if (!bucketName) {
         throw new Error('R2_BUCKET_NAME is not defined');
       }
+
+      console.log(`Using bucket: ${bucketName}`);
 
       const command = new GetObjectCommand({
         Bucket: bucketName,
@@ -108,10 +116,29 @@ export class FileService {
       // Generate a pre-signed URL that expires after the specified time
       const signedUrl = await getSignedUrl(r2Client, command, { expiresIn: expiresInSeconds });
 
+      console.log(`Successfully generated presigned URL (expires in ${expiresInSeconds} seconds)`);
+
       return signedUrl;
     } catch (error) {
       console.error('Failed to generate pre-signed URL:', error);
-      throw new Error(`Failed to generate pre-signed URL: ${error instanceof Error ? error.message : 'Unknown error'}`);
+
+      // Provide detailed error information
+      let errorMessage = 'Failed to generate pre-signed URL: ';
+
+      if (error instanceof Error) {
+        errorMessage += error.message;
+        console.error('Error stack:', error.stack);
+      } else {
+        errorMessage += 'Unknown error';
+      }
+
+      console.error('R2 configuration:');
+      console.error('- Endpoint:', process.env.R2_ENDPOINT || 'Not set');
+      console.error('- Bucket:', process.env.R2_BUCKET_NAME || 'Not set');
+      console.error('- Access Key defined:', !!process.env.R2_ACCESS_KEY_ID);
+      console.error('- Secret Key defined:', !!process.env.R2_SECRET_ACCESS_KEY);
+
+      throw new Error(errorMessage);
     }
   }
 
