@@ -262,6 +262,18 @@ export class FileController {
                 return;
             }
 
+            // Check if the file exists on local disk
+            if (file.path && fs.existsSync(file.path)) {
+                // If local file exists, serve it directly
+                return res.sendFile(file.path);
+            } else if (file.r2Url) {
+                // If local file doesn't exist but we have R2 URL, redirect to it
+                return res.redirect(file.r2Url);
+            }
+
+            // If we reach here, neither local file nor R2 URL is valid,
+            // fallback to original JSON response
+
             // Add URL to file inline - use R2 URL if available, otherwise local URL
             let fileWithUrl;
             if (file.r2Url) {

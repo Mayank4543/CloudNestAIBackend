@@ -9,7 +9,6 @@ import { getUploadDir, ensureUploadDir } from '../utils/uploadPaths';
 import File from '../models/File';
 import { FileService } from '../services/FileService';
 
-// Ensure upload directory exists on startup
 ensureUploadDir();
 
 // Create a new router instance
