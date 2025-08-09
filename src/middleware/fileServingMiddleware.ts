@@ -15,7 +15,7 @@ export const serveUploadedFile = async (req: Request, res: Response, next: NextF
         const uploadDir = getUploadDir();
         const fullPath = path.join(uploadDir, filename);
 
-        console.log(`📁 Attempting to serve file: ${fullPath}`);
+    
 
         // Check if file exists on filesystem
         if (!fs.existsSync(fullPath)) {

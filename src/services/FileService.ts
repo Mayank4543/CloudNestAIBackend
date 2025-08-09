@@ -263,7 +263,7 @@ export class FileService {
       // Generate a pre-signed URL that's valid for 24 hours (or customize as needed)
       const presignedUrl = await this.generatePresignedUrl(objectKey);
 
-      console.log(`Generated pre-signed URL for R2 file: ${presignedUrl}`);
+
 
       // Create a virtual path to simulate local file system (for compatibility)
       const virtualPath = path.join(process.env.NODE_ENV === 'production' ? 'uploads' : 'src/upload', uniqueFileName);
@@ -337,8 +337,7 @@ export class FileService {
           r2Url = r2Result.url;
           r2ObjectKey = r2Result.objectKey;
           virtualPath = r2Result.virtualPath; // Use the virtual path from R2 upload
-          console.log('Successfully uploaded file to R2 from memory:', r2Url);
-          console.log('R2 Object Key:', r2ObjectKey);
+
         } catch (uploadError) {
           console.error('Failed to upload to R2 from memory:', uploadError);
           throw new Error(`Failed to upload file: ${uploadError instanceof Error ? uploadError.message : 'Unknown error'}`);
@@ -356,15 +355,13 @@ export class FileService {
           r2Url = r2Result.url;
           r2ObjectKey = r2Result.objectKey;
           virtualPath = r2Result.virtualPath;
-          console.log('Successfully uploaded file to R2 from disk:', r2Url);
-          console.log('R2 Object Key:', r2ObjectKey);
-
+          
           // Always try to delete the local file after successful R2 upload
           // It's not needed anymore and will just take up disk space
           try {
             if (fs.existsSync(fileData.path)) {
               fs.unlinkSync(fileData.path);
-              console.log('Deleted local file after R2 upload:', fileData.path);
+ 
             }
           } catch (unlinkError) {
             console.error('Failed to delete local file:', unlinkError);
@@ -372,8 +369,7 @@ export class FileService {
           }
         } catch (uploadError) {
           console.error('Failed to upload to R2 from disk:', uploadError);
-          // For disk storage, we'll keep the file as fallback
-          console.log('Keeping local file as fallback');
+          
         }
       } else {
         throw new Error('Neither file buffer nor path provided for upload');

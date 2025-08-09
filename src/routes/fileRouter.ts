@@ -90,7 +90,7 @@ fileRouter.get('/access/:filename', async (req, res) => {
                 });
             }
 
-            console.log(`Access granted to file ${filename}, redirecting to: ${url}`);
+
 
             // Determine how to serve the URL based on its format
             if (url.startsWith('http://') || url.startsWith('https://')) {
