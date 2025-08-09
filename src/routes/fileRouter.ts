@@ -15,58 +15,34 @@ ensureUploadDir();
 // Create a new router instance
 const fileRouter = express.Router();
 
-// Configure multer for file uploads
-const storage = multer.diskStorage({
-    destination: (req, file, cb) => {
-        try {
-            // Use the utility function to get correct upload directory
-            const uploadDir = getUploadDir();
+// Configure multer for memory storage instead of disk storage
+// This way files are kept in memory and uploaded directly to R2 without saving to disk
+const storage = multer.memoryStorage();
 
-            console.log(`📁 Attempting to save file to: ${uploadDir}`);
+// Helper function to generate a safe, unique filename (used after upload)
+const generateSafeFilename = (originalname: string): string => {
+    // Generate unique filename with timestamp and random suffix
+    const uniqueSuffix = Date.now() + '-' + Math.round(Math.random() * 1E9);
+    const fileExtension = path.extname(originalname);
+    const baseName = path.basename(originalname, fileExtension);
 
-            // Double-check directory exists before saving
-            if (!fs.existsSync(uploadDir)) {
-                console.log(`📂 Creating directory: ${uploadDir}`);
-                fs.mkdirSync(uploadDir, { recursive: true });
-            }
+    // Clean filename to prevent path traversal attacks
+    const cleanBaseName = baseName.replace(/[^a-zA-Z0-9._-]/g, '_');
+    const finalFilename = `${cleanBaseName}-${uniqueSuffix}${fileExtension}`;
 
-            // Verify the directory is writable
-            fs.accessSync(uploadDir, fs.constants.W_OK);
+    console.log(`📄 Generated filename: ${finalFilename}`);
+    return finalFilename;
+};
 
-            cb(null, uploadDir);
-        } catch (error) {
-            console.error('❌ Error setting up upload destination:', error);
-            cb(error as Error, '');
-        }
-    },
-    filename: (req, file, cb) => {
-        try {
-            // Generate unique filename with timestamp and random suffix
-            const uniqueSuffix = Date.now() + '-' + Math.round(Math.random() * 1E9);
-            const fileExtension = path.extname(file.originalname);
-            const baseName = path.basename(file.originalname, fileExtension);
-
-            // Clean filename to prevent path traversal attacks
-            const cleanBaseName = baseName.replace(/[^a-zA-Z0-9._-]/g, '_');
-            const finalFilename = `${cleanBaseName}-${uniqueSuffix}${fileExtension}`;
-
-            console.log(`📄 Generated filename: ${finalFilename}`);
-
-            cb(null, finalFilename);
-        } catch (error) {
-            console.error('❌ Error generating filename:', error);
-            cb(error as Error, '');
-        }
-    }
-});// File filter for security (optional but recommended)
+// File filter for security (optional but recommended)
 const fileFilter = (req: express.Request, file: Express.Multer.File, cb: multer.FileFilterCallback) => {
 
     cb(null, true);
 };
 
-// Configure multer middleware
+// Configure multer middleware with memory storage
 const upload = multer({
-    storage: storage,
+    storage: storage, // Using memory storage defined above
     fileFilter: fileFilter,
     limits: {
         fileSize: parseInt(process.env.MAX_FILE_SIZE || '10485760'), // 10MB default
@@ -93,97 +69,60 @@ fileRouter.get('/access/:filename', async (req, res) => {
             });
         }
 
-        // If file is public, allow access
-        if (fileRecord.isPublic) {
-            // If stored in R2, generate a fresh presigned URL and redirect
-            if (fileRecord.r2ObjectKey) {
-                try {
-                    // Generate a fresh presigned URL that's valid for 24 hours
-                    const presignedUrl = await FileService.generatePresignedUrl(fileRecord.r2ObjectKey);
-                    return res.redirect(presignedUrl);
-                } catch (presignError) {
-                    console.error('Error generating presigned URL:', presignError);
-                    // If we have a stored URL as fallback, use that
-                    if (fileRecord.r2Url) {
-                        return res.redirect(fileRecord.r2Url);
-                    }
+        // Access control check
+        if (!fileRecord.isPublic) {
+            // For private files, require authentication
+            const authHeader = req.headers.authorization;
+            const token = authHeader && authHeader.startsWith('Bearer ')
+                ? authHeader.substring(7)
+                : null;
+
+            if (!token) {
+                return res.status(401).json({
+                    success: false,
+                    message: 'Authentication required to access this private file'
+                });
+            }
+
+            // Verify token and check ownership
+            try {
+                const decoded = jwt.verify(token, process.env.JWT_SECRET || 'fallback-secret-key') as any;
+
+                if (fileRecord.userId.toString() !== decoded.userId) {
+                    return res.status(403).json({
+                        success: false,
+                        message: 'You do not have permission to access this file'
+                    });
+                }
+            } catch (jwtError) {
+                return res.status(401).json({
+                    success: false,
+                    message: 'Invalid authentication token'
+                });
+            }
+        }
+
+        // At this point, access is granted
+        // Files should be in R2 now, so generate a presigned URL
+        if (fileRecord.r2ObjectKey) {
+            try {
+                // Generate a fresh presigned URL that's valid for 24 hours
+                const presignedUrl = await FileService.generatePresignedUrl(fileRecord.r2ObjectKey);
+                return res.redirect(presignedUrl);
+            } catch (presignError) {
+                console.error('Error generating presigned URL:', presignError);
+                // If we have a stored URL as fallback, use that
+                if (fileRecord.r2Url) {
+                    return res.redirect(fileRecord.r2Url);
                 }
             }
-
-            // Otherwise, try to serve from local storage
-            const uploadDir = getUploadDir();
-            const fullPath = path.join(uploadDir, filename);
-
-            if (fs.existsSync(fullPath)) {
-                return res.sendFile(fullPath);
-            } else {
-                return res.status(404).json({
-                    success: false,
-                    message: 'File not found on disk and no R2 URL available'
-                });
-            }
         }
 
-        // For private files, require authentication
-        const authHeader = req.headers.authorization;
-        const token = authHeader && authHeader.startsWith('Bearer ')
-            ? authHeader.substring(7)
-            : null;
-
-        if (!token) {
-            return res.status(401).json({
-                success: false,
-                message: 'Authentication required to access this private file'
-            });
-        }
-
-        // Verify token and check ownership
-        try {
-            const decoded = jwt.verify(token, process.env.JWT_SECRET || 'fallback-secret-key') as any;
-
-            if (fileRecord.userId.toString() !== decoded.userId) {
-                return res.status(403).json({
-                    success: false,
-                    message: 'You do not have permission to access this file'
-                });
-            }
-
-
-
-            // If the file is stored in R2, generate a fresh presigned URL and redirect
-            if (fileRecord.r2ObjectKey) {
-                try {
-                    // Generate a fresh presigned URL that's valid for 24 hours
-                    const presignedUrl = await FileService.generatePresignedUrl(fileRecord.r2ObjectKey);
-                    return res.redirect(presignedUrl);
-                } catch (presignError) {
-                    console.error('Error generating presigned URL:', presignError);
-                    // If we have a stored URL as fallback, use that
-                    if (fileRecord.r2Url) {
-                        return res.redirect(fileRecord.r2Url);
-                    }
-                }
-            }
-
-            // Otherwise, try to serve from local disk
-            const uploadDir = getUploadDir();
-            const fullPath = path.join(uploadDir, filename);
-
-            if (fs.existsSync(fullPath)) {
-                return res.sendFile(fullPath);
-            } else {
-                return res.status(404).json({
-                    success: false,
-                    message: 'File not found on disk and no R2 URL available'
-                });
-            }
-
-        } catch (jwtError) {
-            return res.status(401).json({
-                success: false,
-                message: 'Invalid authentication token'
-            });
-        }
+        // If we get here, no R2 access was possible
+        return res.status(404).json({
+            success: false,
+            message: 'File not found in cloud storage'
+        });
 
     } catch (error) {
         console.error('File access error:', error);

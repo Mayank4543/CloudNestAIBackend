@@ -11,11 +11,12 @@ export interface CreateFileData {
   originalname: string;
   mimetype: string;
   size: number;
-  path: string;
+  path?: string;  // Optional now, since we might use buffer
   userId: string;
   isPublic?: boolean;
   tags?: string[];
   r2Key?: string; // Optional field to store R2 object key
+  buffer?: Buffer; // For memory storage uploads
 }
 
 // Interface for file query options
@@ -144,12 +145,12 @@ export class FileService {
 
   /**
    * Upload a file to Cloudflare R2
-   * @param filePath - Local path to file
+   * @param fileBuffer - File content as a Buffer (memory storage)
    * @param fileName - Original file name to use in R2
    * @param contentType - MIME type of the file
-   * @returns Promise<{url: string, objectKey: string}> - Public URL and object key of the uploaded file
+   * @returns Promise<{url: string, objectKey: string, virtualPath: string}> - Public URL, object key, and virtual path of the uploaded file
    */
-  public static async uploadFileToR2(filePath: string, fileName: string, contentType: string): Promise<{ url: string, objectKey: string }> {
+  public static async uploadFileToR2(fileBuffer: Buffer, fileName: string, contentType: string): Promise<{ url: string, objectKey: string, virtualPath: string }> {
     try {
       // Check that all required env variables are set
       const accessKeyId = process.env.R2_ACCESS_KEY_ID;
@@ -168,18 +169,15 @@ export class FileService {
       const fileBaseName = path.basename(fileName);
       const uniqueFileName = `${Date.now()}-${fileBaseName}`;
 
-      // Read file content
-      const fileContent = fs.readFileSync(filePath);
-
       console.log(`Uploading file to R2: ${uniqueFileName}`);
       console.log(`Bucket: ${bucketName}`);
       console.log(`Content Type: ${contentType}`);
 
-      // Upload to R2
+      // Upload to R2 directly from buffer
       const command = new PutObjectCommand({
         Bucket: bucketName,
         Key: uniqueFileName,
-        Body: fileContent,
+        Body: fileBuffer,
         ContentType: contentType,
       });
 
@@ -194,32 +192,14 @@ export class FileService {
 
       console.log(`Generated pre-signed URL for R2 file: ${presignedUrl}`);
 
-      // We'll return both the direct R2 URL (for storage) and the object key
+      // Create a virtual path to simulate local file system (for compatibility)
+      const virtualPath = path.join(process.env.NODE_ENV === 'production' ? 'uploads' : 'src/upload', uniqueFileName);
 
-      // Build the direct R2 URL (Note: this won't be accessible unless the bucket is public)
-      let directUrl: string = '';
-
-      // Extract the base URL from the endpoint
-      let baseUrl = endpoint;
-
-      // Remove trailing slash from baseUrl if present
-      if (baseUrl.endsWith('/')) {
-        baseUrl = baseUrl.slice(0, -1);
-      }
-
-      // Check if the endpoint already has the bucket name included
-      if (baseUrl.includes(bucketName)) {
-        // If bucket is already part of the endpoint URL
-        directUrl = `${baseUrl}/${objectKey}`;
-      } else {
-        // If bucket is not part of the endpoint URL
-        directUrl = `${baseUrl}/${bucketName}/${objectKey}`;
-      }
-
-      // Return both the pre-signed URL and the object key
+      // Return the pre-signed URL, object key, and virtual path
       return {
         url: presignedUrl,
-        objectKey
+        objectKey,
+        virtualPath
       };
     } catch (error) {
       console.error('Failed to upload file to R2:', error);
@@ -269,24 +249,58 @@ export class FileService {
 
       let r2Url = '';
       let r2ObjectKey = '';
-      let r2Error = null;
+      let virtualPath = fileData.path || ''; // Keep original path as fallback
 
-      // Upload file to Cloudflare R2
-      try {
-        const r2Result = await this.uploadFileToR2(
-          fileData.path,
-          fileData.originalname,
-          fileData.mimetype
-        );
-        r2Url = r2Result.url;
-        r2ObjectKey = r2Result.objectKey;
-        console.log('Successfully uploaded file to R2:', r2Url);
-        console.log('R2 Object Key:', r2ObjectKey);
-      } catch (uploadError) {
-        r2Error = uploadError;
-        console.error('Failed to upload to R2:', uploadError);
-        // Continue with local file storage as fallback
-        console.log('Continuing with local file storage as fallback');
+      // Check if this is a Buffer upload (memory storage) or path (disk storage)
+      // fileData.buffer will be present if using memory storage
+      if (fileData.buffer) {
+        try {
+          // Upload file directly from memory buffer to R2
+          const r2Result = await this.uploadFileToR2(
+            fileData.buffer,
+            fileData.originalname,
+            fileData.mimetype
+          );
+          r2Url = r2Result.url;
+          r2ObjectKey = r2Result.objectKey;
+          virtualPath = r2Result.virtualPath; // Use the virtual path from R2 upload
+          console.log('Successfully uploaded file to R2 from memory:', r2Url);
+          console.log('R2 Object Key:', r2ObjectKey);
+        } catch (uploadError) {
+          console.error('Failed to upload to R2 from memory:', uploadError);
+          throw new Error(`Failed to upload file: ${uploadError instanceof Error ? uploadError.message : 'Unknown error'}`);
+        }
+      } else if (fileData.path) {
+        // Legacy path-based upload (disk storage)
+        try {
+          // Read file from disk and upload to R2
+          const fileContent = fs.readFileSync(fileData.path);
+          const r2Result = await this.uploadFileToR2(
+            fileContent,
+            fileData.originalname,
+            fileData.mimetype
+          );
+          r2Url = r2Result.url;
+          r2ObjectKey = r2Result.objectKey;
+          virtualPath = r2Result.virtualPath;
+          console.log('Successfully uploaded file to R2 from disk:', r2Url);
+          console.log('R2 Object Key:', r2ObjectKey);
+
+          // Optionally delete the local file after successful R2 upload
+          try {
+            fs.unlinkSync(fileData.path);
+            console.log('Deleted local file after R2 upload:', fileData.path);
+          } catch (unlinkError) {
+            console.error('Failed to delete local file:', unlinkError);
+            // Non-critical error, continue
+          }
+        } catch (uploadError) {
+          console.error('Failed to upload to R2 from disk:', uploadError);
+          // For disk storage, we'll keep the file as fallback
+          console.log('Keeping local file as fallback');
+        }
+      } else {
+        throw new Error('Neither file buffer nor path provided for upload');
       }
 
       // Create new file document
@@ -295,7 +309,7 @@ export class FileService {
         originalname: fileData.originalname,
         mimetype: fileData.mimetype,
         size: fileData.size,
-        path: fileData.path,
+        path: virtualPath, // Use virtual path for consistency
         userId: new Types.ObjectId(fileData.userId),
         isPublic: fileData.isPublic || false,
         tags: cleanTags,

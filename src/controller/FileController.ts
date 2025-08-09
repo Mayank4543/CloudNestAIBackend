@@ -72,13 +72,25 @@ export class FileController {
                 : [];
             const isPublic: boolean = req.body.isPublic === 'true' || req.body.isPublic === true;
 
-            // Prepare file data
+            // Generate a filename (since we're using memory storage)
+            // Import the function from fileRouter or redeclare it here
+            const generateFilename = (originalname: string): string => {
+                const uniqueSuffix = Date.now() + '-' + Math.round(Math.random() * 1E9);
+                const fileExtension = path.extname(originalname);
+                const baseName = path.basename(originalname, fileExtension);
+                const cleanBaseName = baseName.replace(/[^a-zA-Z0-9._-]/g, '_');
+                return `${cleanBaseName}-${uniqueSuffix}${fileExtension}`;
+            };
+
+            const generatedFilename = req.file.filename || generateFilename(req.file.originalname);
+
+            // Prepare file data with buffer instead of path
             const fileData: CreateFileData = {
-                filename: req.file.filename,
+                filename: generatedFilename,
                 originalname: req.file.originalname,
                 mimetype: req.file.mimetype,
                 size: req.file.size,
-                path: req.file.path,
+                buffer: req.file.buffer, // Use buffer instead of path
                 userId: req.user._id.toString(),
                 isPublic: isPublic,
                 tags: tags
