@@ -103,7 +103,9 @@ export class FileService {
   /**
    * Generate a pre-signed URL for accessing a file in R2
    * @param objectKey - The key (filename) of the object in R2
-   * @param expiresInSeconds - How long the URL should be valid (default: 24 hours)
+   * @param expiresInSeconds - How long the URL should be valid:
+   *                           - For public files: 86400 seconds (24 hours)
+   *                           - For private files: 3600 seconds (1 hour)
    * @returns Promise<string> - Pre-signed URL
    */
   public static async generatePresignedUrl(objectKey: string, expiresInSeconds: number = 86400): Promise<string> {
@@ -112,7 +114,7 @@ export class FileService {
         throw new Error('Object key is required for generating a presigned URL');
       }
 
-      console.log(`Generating presigned URL for object: ${objectKey}`);
+      console.log(`Generating presigned URL for object: ${objectKey}, expires in: ${expiresInSeconds}s`);
 
       const r2Client = this.getR2Client();
       const bucketName = process.env.R2_BUCKET_NAME;
@@ -355,13 +357,13 @@ export class FileService {
           r2Url = r2Result.url;
           r2ObjectKey = r2Result.objectKey;
           virtualPath = r2Result.virtualPath;
-          
+
           // Always try to delete the local file after successful R2 upload
           // It's not needed anymore and will just take up disk space
           try {
             if (fs.existsSync(fileData.path)) {
               fs.unlinkSync(fileData.path);
- 
+
             }
           } catch (unlinkError) {
             console.error('Failed to delete local file:', unlinkError);
@@ -369,7 +371,7 @@ export class FileService {
           }
         } catch (uploadError) {
           console.error('Failed to upload to R2 from disk:', uploadError);
-          
+
         }
       } else {
         throw new Error('Neither file buffer nor path provided for upload');
@@ -842,6 +844,9 @@ export class FileService {
   /**
    * Get a file access URL - for the /access/:filename route
    * Prioritizes R2 storage and handles public/private access
+   * Implements Google Drive style access control:
+   * - Public files: Serves direct URL or generates 24h presigned URL
+   * - Private files: Requires auth + ownership, generates 1h presigned URL
    * 
    * @param filename - The filename to access
    * @param userId - Optional user ID for private file access check
@@ -852,34 +857,33 @@ export class FileService {
       // Find the file by filename
       const filter: FilterQuery<IFile> = { filename };
 
-      // If userId is provided, check ownership or public access
-      if (userId) {
-        if (!Types.ObjectId.isValid(userId)) {
-          throw new Error('Invalid user ID format');
-        }
-        // Either the user owns the file or the file is public
-        filter.$or = [
-          { userId: new Types.ObjectId(userId) },
-          { isPublic: true }
-        ];
-      } else {
-        // Without userId, only return public files
-        filter.isPublic = true;
-      }
-
+      // Get the file first, without applying access filter
+      // We'll handle access control logic explicitly
       const file = await File.findOne(filter).select('-__v');
 
       if (!file) {
-        throw new Error('File not found or access denied');
+        throw new Error('File not found');
+      }
+
+      // Google Drive style access control
+      // 1. Public files are accessible to everyone
+      // 2. Private files require authentication and ownership verification
+      if (!file.isPublic && (!userId || file.userId.toString() !== userId)) {
+        throw new Error('Access denied - authentication required for private file');
       }
 
       let accessUrl = '';
 
+      // Set expiry time based on file privacy
+      // Public files: 24 hours (86400 seconds)
+      // Private files: 1 hour (3600 seconds)
+      const expirySeconds = file.isPublic ? 86400 : 3600;
+
       // Strategy 1: Generate presigned URL using r2ObjectKey if available
       if (file.r2ObjectKey) {
         try {
-          accessUrl = await this.generatePresignedUrl(file.r2ObjectKey);
-          console.log(`Generated presigned URL using r2ObjectKey: ${accessUrl}`);
+          accessUrl = await this.generatePresignedUrl(file.r2ObjectKey, expirySeconds);
+          console.log(`Generated presigned URL (expires in ${expirySeconds}s) using r2ObjectKey: ${accessUrl}`);
           return { url: accessUrl, isPublic: file.isPublic, file };
         } catch (error) {
           console.error('Failed to generate presigned URL from r2ObjectKey:', error);
@@ -891,13 +895,19 @@ export class FileService {
       if (file.r2Url) {
         console.log(`Using stored r2Url: ${file.r2Url}`);
 
-        // Try to extract the object key from the stored URL and update database
+        // For public files, we can directly use the stored r2Url
+        if (file.isPublic) {
+          accessUrl = file.r2Url;
+          return { url: accessUrl, isPublic: file.isPublic, file };
+        }
+
+        // For private files, try to extract the object key to create a short-lived URL
         try {
           const objectKey = this.extractObjectKeyFromUrl(file.r2Url);
 
           // Try to generate a fresh presigned URL with the extracted key
-          accessUrl = await this.generatePresignedUrl(objectKey);
-          console.log(`Generated fresh presigned URL from extracted key: ${accessUrl}`);
+          accessUrl = await this.generatePresignedUrl(objectKey, expirySeconds);
+          console.log(`Generated fresh presigned URL (expires in ${expirySeconds}s) from extracted key: ${accessUrl}`);
 
           // Update the file's r2ObjectKey for future use if it was missing
           if (!file.r2ObjectKey) {
@@ -927,7 +937,6 @@ export class FileService {
       }
 
       throw new Error('File content unavailable - not found in R2 or local storage');
-
     } catch (error) {
       throw new Error(`Failed to get file access URL: ${error instanceof Error ? error.message : 'Unknown error'}`);
     }

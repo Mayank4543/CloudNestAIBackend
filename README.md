@@ -83,7 +83,7 @@ PORT=4000
 NODE_ENV=development
 
 # MongoDB Configuration
-MONGODB_URI=mongodb+srv://your-username:your-password@cluster0.awx.mongodb.net/database_name
+MONGODB_URI=mongodb_clusterURL
 
 # CORS Configuration (comma-separated origins)
 CORS_ORIGIN=http://localhost:3000,http://localhost:5173,http://localhost:8080
