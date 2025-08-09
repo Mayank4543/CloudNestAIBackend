@@ -58,94 +58,78 @@ fileRouter.get('/access/:filename', async (req, res) => {
     try {
         const filename = req.params.filename;
 
-        // Find file in database
-        const fileRecord = await File.findOne({ filename });
+        // Get userId from token if present for authentication
+        let userId: string | undefined = undefined;
 
-        if (!fileRecord) {
-            return res.status(404).json({
-                success: false,
-                message: 'File not found in database'
-            });
-        }
+        // Extract token if present
+        const authHeader = req.headers.authorization;
+        const token = authHeader && authHeader.startsWith('Bearer ')
+            ? authHeader.substring(7)
+            : null;
 
-        // Access control check
-        if (!fileRecord.isPublic) {
-            // For private files, require authentication
-            const authHeader = req.headers.authorization;
-            const token = authHeader && authHeader.startsWith('Bearer ')
-                ? authHeader.substring(7)
-                : null;
-
-            if (!token) {
-                return res.status(401).json({
-                    success: false,
-                    message: 'Authentication required to access this private file'
-                });
-            }
-
-            // Verify token and check ownership
+        // Validate token if provided
+        if (token) {
             try {
                 const decoded = jwt.verify(token, process.env.JWT_SECRET || 'fallback-secret-key') as any;
-
-                if (fileRecord.userId.toString() !== decoded.userId) {
-                    return res.status(403).json({
-                        success: false,
-                        message: 'You do not have permission to access this file'
-                    });
-                }
+                userId = decoded.userId;
             } catch (jwtError) {
-                return res.status(401).json({
+                console.error('Invalid JWT token:', jwtError);
+                // Continue without userId - will only allow public files
+            }
+        }
+
+        try {
+            // Use the new FileService method to get the file access URL
+            const { url, isPublic, file } = await FileService.getFileAccessUrl(filename, userId);
+
+            // Check file permissions
+            if (!isPublic && (!userId || file.userId.toString() !== userId)) {
+                return res.status(403).json({
                     success: false,
-                    message: 'Invalid authentication token'
+                    message: 'You do not have permission to access this private file'
                 });
             }
-        }
 
-        // At this point, access is granted
-        // Try R2 access first using object key for most reliable access
-        if (fileRecord.r2ObjectKey) {
-            try {
-                console.log(`Generating presigned URL for object key: ${fileRecord.r2ObjectKey}`);
-                // Generate a fresh presigned URL that's valid for 24 hours
-                const presignedUrl = await FileService.generatePresignedUrl(fileRecord.r2ObjectKey);
-                console.log(`Generated presigned URL: ${presignedUrl}`);
-                return res.redirect(presignedUrl);
-            } catch (presignError) {
-                console.error('Error generating presigned URL from object key:', presignError);
-                // Continue to next fallback
+            console.log(`Access granted to file ${filename}, redirecting to: ${url}`);
+
+            // Determine how to serve the URL based on its format
+            if (url.startsWith('http://') || url.startsWith('https://')) {
+                // For http/https URLs (like presigned URLs), redirect
+                return res.redirect(url);
+            } else {
+                // For local paths, use sendFile
+                return res.sendFile(url);
+            }
+
+        } catch (error) {
+            // Handle specific errors
+            const errorMessage = error instanceof Error ? error.message : 'Unknown error';
+
+            if (errorMessage.includes('File not found')) {
+                return res.status(404).json({
+                    success: false,
+                    message: 'File not found in database'
+                });
+            } else if (errorMessage.includes('access denied')) {
+                return res.status(403).json({
+                    success: false,
+                    message: 'Access denied to this file'
+                });
+            } else if (errorMessage.includes('File content unavailable')) {
+                return res.status(404).json({
+                    success: false,
+                    message: 'File content not found in storage'
+                });
+            } else {
+                throw error; // Re-throw for general error handling
             }
         }
-
-        // If object key failed but we have a stored R2 URL, try that
-        if (fileRecord.r2Url) {
-            console.log(`Using stored R2 URL: ${fileRecord.r2Url}`);
-            return res.redirect(fileRecord.r2Url);
-        }
-
-        // Last resort: try local disk (for backward compatibility)
-        try {
-            const uploadDir = getUploadDir();
-            const fullPath = path.join(uploadDir, filename);
-
-            if (fs.existsSync(fullPath)) {
-                console.log(`Serving file from local disk: ${fullPath}`);
-                return res.sendFile(fullPath);
-            }
-        } catch (diskError) {
-            console.error('Error accessing local file:', diskError);
-        }
-
-        // If we get here, no access method worked
-        return res.status(404).json({
-            success: false,
-            message: 'File not found in storage'
-        });
-
     } catch (error) {
         console.error('File access error:', error);
         return res.status(500).json({
             success: false,
-            message: 'Internal server error'
+            message: 'Error accessing file',
+            error: error instanceof Error ? error.message : 'Unknown error'
         });
     }
 });

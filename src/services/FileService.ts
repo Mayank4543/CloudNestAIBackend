@@ -256,7 +256,7 @@ export class FileService {
   public static async saveFile(fileData: CreateFileData): Promise<IFile> {
     try {
       // Validate required fields
-      if (!fileData.filename || !fileData.originalname || !fileData.mimetype || !fileData.path || !fileData.userId) {
+      if (!fileData.filename || !fileData.originalname || !fileData.mimetype || !fileData.userId) {
         throw new Error('Missing required file data fields');
       }
 
@@ -791,6 +791,100 @@ export class FileService {
 
     } catch (error) {
       throw new Error(`Failed to get files by mimetype: ${error instanceof Error ? error.message : 'Unknown error'}`);
+    }
+  }
+
+  /**
+   * Get a file access URL - for the /access/:filename route
+   * Prioritizes R2 storage and handles public/private access
+   * 
+   * @param filename - The filename to access
+   * @param userId - Optional user ID for private file access check
+   * @returns Promise<{url: string, isPublic: boolean, file: IFile}> - Access URL, public status, and file data
+   */
+  public static async getFileAccessUrl(filename: string, userId?: string): Promise<{ url: string, isPublic: boolean, file: IFile }> {
+    try {
+      // Find the file by filename
+      const filter: FilterQuery<IFile> = { filename };
+
+      // If userId is provided, check ownership or public access
+      if (userId) {
+        if (!Types.ObjectId.isValid(userId)) {
+          throw new Error('Invalid user ID format');
+        }
+        // Either the user owns the file or the file is public
+        filter.$or = [
+          { userId: new Types.ObjectId(userId) },
+          { isPublic: true }
+        ];
+      } else {
+        // Without userId, only return public files
+        filter.isPublic = true;
+      }
+
+      const file = await File.findOne(filter).select('-__v');
+
+      if (!file) {
+        throw new Error('File not found or access denied');
+      }
+
+      let accessUrl = '';
+
+      // Strategy 1: Generate presigned URL using r2ObjectKey if available
+      if (file.r2ObjectKey) {
+        try {
+          accessUrl = await this.generatePresignedUrl(file.r2ObjectKey);
+          console.log(`Generated presigned URL using r2ObjectKey: ${accessUrl}`);
+          return { url: accessUrl, isPublic: file.isPublic, file };
+        } catch (error) {
+          console.error('Failed to generate presigned URL from r2ObjectKey:', error);
+          // Continue to fallback options
+        }
+      }
+
+      // Strategy 2: Use stored r2Url if available
+      if (file.r2Url) {
+        console.log(`Using stored r2Url: ${file.r2Url}`);
+
+        // Try to extract the object key from the stored URL and update database
+        try {
+          const objectKey = this.extractObjectKeyFromUrl(file.r2Url);
+
+          // Try to generate a fresh presigned URL with the extracted key
+          accessUrl = await this.generatePresignedUrl(objectKey);
+          console.log(`Generated fresh presigned URL from extracted key: ${accessUrl}`);
+
+          // Update the file's r2ObjectKey for future use if it was missing
+          if (!file.r2ObjectKey) {
+            await File.updateOne({ _id: file._id }, { r2ObjectKey: objectKey });
+            console.log(`Updated file record with extracted r2ObjectKey: ${objectKey}`);
+          }
+
+          return { url: accessUrl, isPublic: file.isPublic, file };
+        } catch (error) {
+          console.error('Failed to generate fresh URL from extracted key, using stored r2Url:', error);
+          accessUrl = file.r2Url; // Fall back to stored URL
+          return { url: accessUrl, isPublic: file.isPublic, file };
+        }
+      }
+
+      // Strategy 3: Last resort - check if path exists on local disk
+      if (file.path) {
+        // Verify the file actually exists on disk before returning path
+        try {
+          await fs.promises.access(file.path, fs.constants.F_OK);
+          console.log(`File found on local disk: ${file.path}`);
+          accessUrl = file.path;
+          return { url: accessUrl, isPublic: file.isPublic, file };
+        } catch (error) {
+          console.error('File path exists in database but not on disk:', error);
+        }
+      }
+
+      throw new Error('File content unavailable - not found in R2 or local storage');
+
+    } catch (error) {
+      throw new Error(`Failed to get file access URL: ${error instanceof Error ? error.message : 'Unknown error'}`);
     }
   }
 }
