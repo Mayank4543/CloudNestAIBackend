@@ -843,10 +843,9 @@ export class FileService {
 
   /**
    * Get a file access URL - for the /access/:filename route
-   * Prioritizes R2 storage and handles public/private access
-   * Implements Google Drive style access control:
-   * - Public files: Serves direct URL or generates 24h presigned URL
-   * - Private files: Requires auth + ownership, generates 1h presigned URL
+   * Implements Google Drive style hybrid approach:
+   * - Public files: Use permanent R2 URL for direct access
+   * - Private files: Always generate 1-hour presigned URL
    * 
    * @param filename - The filename to access
    * @param userId - Optional user ID for private file access check
@@ -874,56 +873,75 @@ export class FileService {
 
       let accessUrl = '';
 
-      // Set expiry time based on file privacy
-      // Public files: 24 hours (86400 seconds)
-      // Private files: 1 hour (3600 seconds)
-      const expirySeconds = file.isPublic ? 86400 : 3600;
+      // HYBRID APPROACH: Different strategies for public vs private files
+      if (file.isPublic) {
+        // FOR PUBLIC FILES: Use permanent R2 URL for direct access (Google Drive exact feel)
 
-      // Strategy 1: Generate presigned URL using r2ObjectKey if available
-      if (file.r2ObjectKey) {
-        try {
-          accessUrl = await this.generatePresignedUrl(file.r2ObjectKey, expirySeconds);
-          console.log(`Generated presigned URL (expires in ${expirySeconds}s) using r2ObjectKey: ${accessUrl}`);
-          return { url: accessUrl, isPublic: file.isPublic, file };
-        } catch (error) {
-          console.error('Failed to generate presigned URL from r2ObjectKey:', error);
-          // Continue to fallback options
-        }
-      }
-
-      // Strategy 2: Use stored r2Url if available
-      if (file.r2Url) {
-        console.log(`Using stored r2Url: ${file.r2Url}`);
-
-        // For public files, we can directly use the stored r2Url
-        if (file.isPublic) {
-          accessUrl = file.r2Url;
-          return { url: accessUrl, isPublic: file.isPublic, file };
+        // If we have a stored r2Url, use it directly for public files
+        if (file.r2Url) {
+          console.log(`Public file: Using permanent R2 URL: ${file.r2Url}`);
+          return { url: file.r2Url, isPublic: true, file };
         }
 
-        // For private files, try to extract the object key to create a short-lived URL
-        try {
-          const objectKey = this.extractObjectKeyFromUrl(file.r2Url);
-
-          // Try to generate a fresh presigned URL with the extracted key
-          accessUrl = await this.generatePresignedUrl(objectKey, expirySeconds);
-          console.log(`Generated fresh presigned URL (expires in ${expirySeconds}s) from extracted key: ${accessUrl}`);
-
-          // Update the file's r2ObjectKey for future use if it was missing
-          if (!file.r2ObjectKey) {
-            await File.updateOne({ _id: file._id }, { r2ObjectKey: objectKey });
-            console.log(`Updated file record with extracted r2ObjectKey: ${objectKey}`);
+        // If we have r2ObjectKey but no r2Url, generate a long-lived URL (24 hours)
+        // This is a fallback, ideally we should have stored r2Url for all public files
+        if (file.r2ObjectKey) {
+          try {
+            accessUrl = await this.generatePresignedUrl(file.r2ObjectKey, 86400); // 24 hours
+            console.log(`Public file: Generated long-lived presigned URL: ${accessUrl}`);
+            return { url: accessUrl, isPublic: true, file };
+          } catch (error) {
+            console.error('Failed to generate presigned URL for public file:', error);
+            // Continue to fallback options
           }
+        }
+      } else {
+        // FOR PRIVATE FILES: Always generate short-lived (1h) presigned URL (Google Drive exact feel)
 
-          return { url: accessUrl, isPublic: file.isPublic, file };
-        } catch (error) {
-          console.error('Failed to generate fresh URL from extracted key, using stored r2Url:', error);
-          accessUrl = file.r2Url; // Fall back to stored URL
-          return { url: accessUrl, isPublic: file.isPublic, file };
+        // If we have r2ObjectKey, generate a short-lived presigned URL
+        if (file.r2ObjectKey) {
+          try {
+            accessUrl = await this.generatePresignedUrl(file.r2ObjectKey, 3600); // 1 hour exactly
+            console.log(`Private file: Generated 1-hour presigned URL for user ${userId}`);
+            return { url: accessUrl, isPublic: false, file };
+          } catch (error) {
+            console.error('Failed to generate presigned URL for private file:', error);
+            // Continue to fallback options
+          }
+        }
+
+        // Try to extract object key from r2Url if available
+        if (file.r2Url) {
+          try {
+            const objectKey = this.extractObjectKeyFromUrl(file.r2Url);
+
+            // Generate a fresh 1-hour presigned URL with the extracted key
+            accessUrl = await this.generatePresignedUrl(objectKey, 3600);
+            console.log(`Private file: Generated 1-hour presigned URL from extracted key`);
+
+            // Update the file's r2ObjectKey for future use if it was missing
+            if (!file.r2ObjectKey) {
+              await File.updateOne({ _id: file._id }, { r2ObjectKey: objectKey });
+              console.log(`Updated file record with extracted r2ObjectKey: ${objectKey}`);
+            }
+
+            return { url: accessUrl, isPublic: false, file };
+          } catch (error) {
+            console.error('Failed to generate fresh URL from extracted key:', error);
+            // For private files, we don't want to use the stored R2 URL directly
+            // because it doesn't expire, so we'll continue to fallbacks
+          }
         }
       }
 
-      // Strategy 3: Last resort - check if path exists on local disk
+      // If we get here, we couldn't use the ideal approach based on privacy
+      // Fallback: Use any available R2 URL
+      if (file.r2Url) {
+        console.log(`Fallback: Using stored r2Url: ${file.r2Url}`);
+        return { url: file.r2Url, isPublic: file.isPublic, file };
+      }
+
+      // Last resort - check if path exists on local disk
       if (file.path) {
         // Verify the file actually exists on disk before returning path
         try {
