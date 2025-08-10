@@ -65,7 +65,7 @@ fileRouter.get('/access/:filename', async (req, res) => {
         if (!fileRecord) {
             return res.status(404).json({
                 success: false,
-                message: 'File not found in database'
+                message: 'You have no token to access this file'
             });
         }
 
