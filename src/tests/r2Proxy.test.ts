@@ -1,7 +1,7 @@
 import request from 'supertest';
 import mongoose from 'mongoose';
 import express from 'express';
-import { MongoMemoryServer } from 'mongodb-memory-server';
+import { MongoMemoryServer } from 'mongodb-memory-server-core';
 import jwt from 'jsonwebtoken';
 import { proxyR2File } from '../middleware/r2ProxyMiddleware';
 import File from '../models/File';
@@ -10,7 +10,7 @@ import axios from 'axios';
 
 // Mock the axios module
 jest.mock('axios');
-const mockedAxios = axios as jest.Mocked<typeof axios>;
+const mockedAxios = jest.mocked(axios);
 
 // Mock environment variables
 process.env.JWT_SECRET = 'test-secret-key';
@@ -72,11 +72,9 @@ describe('R2 Proxy Middleware', () => {
         };
 
         // Configure axios mock
-        mockedAxios.mockImplementation(() => {
-            return Promise.resolve({
-                data: mockReadableStream,
-                headers: { 'content-type': 'image/jpeg' }
-            });
+        mockedAxios.mockResolvedValue({
+            data: mockReadableStream,
+            headers: { 'content-type': 'image/jpeg' }
         });
     });
 
@@ -213,9 +211,7 @@ describe('R2 Proxy Middleware', () => {
         jest.spyOn(File, 'findOne').mockResolvedValueOnce(mockFile as any);
 
         // Make axios throw an error
-        mockedAxios.mockImplementationOnce(() => {
-            return Promise.reject(new Error('Network error'));
-        });
+        mockedAxios.mockRejectedValueOnce(new Error('Network error'));
 
         const response = await request(app).get('/proxy/error.jpg');
 
