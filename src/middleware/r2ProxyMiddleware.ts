@@ -3,6 +3,35 @@ import axios from 'axios';
 import File from '../models/File';
 import jwt from 'jsonwebtoken';
 import { FileService } from '../services/FileService';
+import cors from 'cors';
+
+/**
+ * Configure CORS specifically for the proxy endpoint
+ * This ensures all origins are allowed for the proxy
+ */
+export const proxyFileCors = cors({
+    origin: function(origin, callback) {
+        const allowedOrigins = [
+            'http://localhost:3000',
+            'https://cloudnestai.vercel.app',
+            'https://cloudnestai.com',
+            // Add any other frontend origins here
+        ];
+        
+        // Allow requests with no origin (like mobile apps or curl requests)
+        if (!origin) return callback(null, true);
+        
+        if (allowedOrigins.indexOf(origin) !== -1 || process.env.NODE_ENV !== 'production') {
+            callback(null, true);
+        } else {
+            console.log(`CORS blocked for origin: ${origin}`);
+            // Still allow the request, but log it for debugging
+            callback(null, true);
+        }
+    },
+    credentials: true,
+    maxAge: 86400 // CORS preflight cache time (24 hours)
+});
 
 /**
  * Middleware to proxy R2 files through our backend to avoid CORS issues with Cloudflare
@@ -190,9 +219,20 @@ export const proxyR2File = async (req: Request, res: Response, next: NextFunctio
                 timeout: 30000, // 30 second timeout
             });
 
-            // Set appropriate headers
+            // Enable CORS headers
+            res.setHeader('Access-Control-Allow-Origin', '*');
+            res.setHeader('Access-Control-Allow-Methods', 'GET, OPTIONS');
+            res.setHeader('Access-Control-Allow-Headers', 'Content-Type, Authorization');
+            res.setHeader('Access-Control-Max-Age', '86400'); // 24 hours
+
+            // Set appropriate content headers
             res.setHeader('Content-Type', file.mimetype || 'application/octet-stream');
             res.setHeader('Content-Disposition', `inline; filename="${encodeURIComponent(file.originalname)}"`);
+            
+            // Transfer content length header if available to improve loading indicators
+            if (response.headers['content-length']) {
+                res.setHeader('Content-Length', response.headers['content-length']);
+            }
 
             // Add cache control headers - cache public files longer
             if (file.isPublic) {
@@ -200,9 +240,17 @@ export const proxyR2File = async (req: Request, res: Response, next: NextFunctio
             } else {
                 res.setHeader('Cache-Control', 'private, max-age=3600'); // 1 hour
             }
+            
+            // Add a header to indicate this is a proxied response
+            res.setHeader('X-Proxied-By', 'CloudNestAI-Backend');
 
-            // Stream the response directly to the client
+            // Stream the response directly to the client without redirecting
             response.data.pipe(res);
+
+            // Handle successful completion
+            response.data.on('end', () => {
+                console.log(`R2 Proxy: Successfully streamed ${filename}`);
+            });
 
             // Handle errors in the stream
             response.data.on('error', (error: Error) => {
@@ -213,10 +261,39 @@ export const proxyR2File = async (req: Request, res: Response, next: NextFunctio
                         success: false,
                         message: 'Error streaming file content'
                     });
+                } else {
+                    // If headers already sent, try to end the response properly
+                    try {
+                        res.end();
+                    } catch (e) {
+                        console.error('Error ending response stream:', e);
+                    }
                 }
             });
         } catch (error) {
             console.error(`R2 Proxy: Failed to proxy ${filename}:`, error);
+            
+            // Enhanced error handling with specific status codes
+            if (axios.isAxiosError(error)) {
+                const statusCode = error.response?.status || 500;
+                let errorMessage = 'Error retrieving file from storage';
+                
+                // Handle specific error codes
+                if (statusCode === 403) {
+                    errorMessage = 'Access denied or URL expired';
+                } else if (statusCode === 404) {
+                    errorMessage = 'File not found in storage';
+                } else if (statusCode === 429) {
+                    errorMessage = 'Too many requests to storage provider';
+                }
+                
+                return res.status(statusCode).json({
+                    success: false,
+                    message: errorMessage,
+                    error: process.env.NODE_ENV === 'development' ? error.message : undefined
+                });
+            }
+            
             return res.status(500).json({
                 success: false,
                 message: 'Error retrieving file from storage'

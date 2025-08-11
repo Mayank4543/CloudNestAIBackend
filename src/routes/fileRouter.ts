@@ -53,12 +53,13 @@ const upload = multer({
 fileRouter.post('/upload', authenticateToken, upload.single('file'), FileController.uploadFile);
 fileRouter.get('/debug', FileController.getDebugInfo); // Debug endpoint
 
-// Import proxyR2File middleware
-import { proxyR2File } from '../middleware/r2ProxyMiddleware';
+// Import proxyR2File middleware and CORS configuration
+import { proxyR2File, proxyFileCors } from '../middleware/r2ProxyMiddleware';
 
 // Proxy route to avoid CORS issues with Cloudflare R2
 // This route serves the file content directly through our backend instead of redirecting
-fileRouter.get('/proxy/:filename', proxyR2File);
+// Apply CORS middleware specifically for this route
+fileRouter.get('/proxy/:filename', proxyFileCors, proxyR2File);
 
 // File access route with Google Drive style permissions - MUST be before /:id route
 fileRouter.get('/access/:filename', async (req, res) => {
