@@ -41,6 +41,14 @@ const upload = multer({
 // Routes - Define specific routes first, parameterized routes last
 // All routes are protected with authenticateToken middleware
 
+// Import proxyR2File middleware
+import { proxyR2File } from '../middleware/r2ProxyMiddleware';
+
+// Proxy route to avoid CORS issues with Cloudflare R2
+// This route serves the file content directly through our backend instead of redirecting
+// Note: No authenticateToken middleware here, as the middleware handles auth internally
+router.get('/proxy/:filename', proxyR2File);
+
 // Handle file upload (protected)
 router.post('/upload', upload.single('file'), FileController.uploadFile);
 
