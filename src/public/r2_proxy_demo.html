@@ -1,5 +1,6 @@
 <!DOCTYPE html>
 <html lang="en">
+
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
@@ -11,29 +12,35 @@
             margin: 0 auto;
             padding: 20px;
         }
+
         h1 {
             color: #333;
         }
+
         .container {
             display: flex;
             flex-direction: column;
             gap: 20px;
         }
+
         .card {
             border: 1px solid #ddd;
             border-radius: 8px;
             padding: 20px;
             box-shadow: 0 2px 4px rgba(0, 0, 0, 0.1);
         }
+
         .comparison {
             display: flex;
             flex-wrap: wrap;
             gap: 20px;
         }
-        .comparison > div {
+
+        .comparison>div {
             flex: 1;
             min-width: 300px;
         }
+
         button {
             background-color: #4CAF50;
             color: white;
@@ -43,23 +50,28 @@
             cursor: pointer;
             margin: 10px 0;
         }
+
         button:hover {
             background-color: #45a049;
         }
+
         pre {
             background-color: #f5f5f5;
             padding: 10px;
             border-radius: 4px;
             overflow-x: auto;
         }
+
         .error {
             color: red;
             font-weight: bold;
         }
+
         .success {
             color: green;
             font-weight: bold;
         }
+
         #imageContainer img {
             max-width: 100%;
             border: 1px solid #ddd;
@@ -67,6 +79,7 @@
         }
     </style>
 </head>
+
 <body>
     <h1>CloudNest R2 Proxy Demo</h1>
     <div class="container">
@@ -140,7 +153,7 @@
             const email = document.getElementById('email').value;
             const password = document.getElementById('password').value;
             const statusElem = document.getElementById('loginStatus');
-            
+
             try {
                 statusElem.textContent = 'Logging in...';
                 const response = await fetch(`${API_BASE_URL}/api/auth/login`, {
@@ -150,10 +163,10 @@
                     },
                     body: JSON.stringify({ email, password })
                 });
-                
+
                 const data = await response.json();
                 if (!response.ok) throw new Error(data.message || 'Login failed');
-                
+
                 authToken = data.token;
                 localStorage.setItem('authToken', authToken);
                 statusElem.className = 'success';
@@ -169,18 +182,18 @@
             const resultElem = document.getElementById('proxyResult');
             try {
                 resultElem.textContent = 'Loading...';
-                
+
                 // Replace with a real filename from your system
-                const filename = 'example.jpg'; 
-                
+                const filename = 'example.jpg';
+
                 const response = await fetch(`${API_BASE_URL}/api/files/proxy/${filename}`, {
                     headers: {
                         'Authorization': `Bearer ${authToken}`
                     }
                 });
-                
+
                 if (!response.ok) throw new Error(`Error: ${response.status}`);
-                
+
                 const blob = await response.blob();
                 resultElem.className = 'success';
                 resultElem.textContent = `Successfully loaded file: ${(blob.size / 1024).toFixed(2)} KB`;
@@ -195,14 +208,14 @@
             const resultElem = document.getElementById('directResult');
             try {
                 resultElem.textContent = 'Loading...';
-                
+
                 // Replace with a direct R2 URL (this will fail due to CORS)
                 const directUrl = 'https://example-r2-bucket.r2.cloudflarestorage.com/example.jpg?signature=abc123';
-                
+
                 const response = await fetch(directUrl);
-                
+
                 if (!response.ok) throw new Error(`Error: ${response.status}`);
-                
+
                 const blob = await response.blob();
                 resultElem.className = 'success';
                 resultElem.textContent = `Successfully loaded file: ${(blob.size / 1024).toFixed(2)} KB`;
@@ -216,16 +229,16 @@
         document.getElementById('displayImageButton').addEventListener('click', () => {
             const container = document.getElementById('imageContainer');
             container.innerHTML = '';
-            
+
             // Replace with a real image filename from your system
             const filename = 'example.jpg';
-            
+
             const img = document.createElement('img');
             img.alt = 'Sample Image';
-            
+
             // The proxy endpoint properly sets content-type and avoids CORS
             img.src = `${API_BASE_URL}/api/files/proxy/${filename}`;
-            
+
             // Add auth token if needed for private files
             if (authToken) {
                 img.crossOrigin = 'use-credentials';
@@ -234,7 +247,7 @@
                 const tokenParam = `?token=${encodeURIComponent(authToken)}`;
                 img.src += tokenParam;
             }
-            
+
             container.appendChild(img);
         });
 
@@ -243,21 +256,21 @@
             const fileInput = document.getElementById('fileInput');
             const isPublic = document.getElementById('isPublic').checked;
             const statusElem = document.getElementById('uploadStatus');
-            
+
             if (!fileInput.files || fileInput.files.length === 0) {
                 statusElem.className = 'error';
                 statusElem.textContent = 'Please select a file first';
                 return;
             }
-            
+
             const file = fileInput.files[0];
             const formData = new FormData();
             formData.append('file', file);
             formData.append('isPublic', isPublic.toString());
-            
+
             try {
                 statusElem.textContent = 'Uploading...';
-                
+
                 const response = await fetch(`${API_BASE_URL}/api/files/upload`, {
                     method: 'POST',
                     headers: {
@@ -265,10 +278,10 @@
                     },
                     body: formData
                 });
-                
+
                 const data = await response.json();
                 if (!response.ok) throw new Error(data.message || 'Upload failed');
-                
+
                 statusElem.className = 'success';
                 statusElem.textContent = `File uploaded successfully! ID: ${data.file?._id || 'Unknown'}`;
             } catch (error) {
@@ -280,28 +293,28 @@
         // List files
         document.getElementById('listFilesButton').addEventListener('click', async () => {
             const listElem = document.getElementById('fileList');
-            
+
             try {
                 listElem.textContent = 'Loading files...';
-                
+
                 const response = await fetch(`${API_BASE_URL}/api/files`, {
                     headers: {
                         'Authorization': `Bearer ${authToken}`
                     }
                 });
-                
+
                 const data = await response.json();
                 if (!response.ok) throw new Error(data.message || 'Failed to load files');
-                
+
                 if (!data.files || data.files.length === 0) {
                     listElem.textContent = 'No files found';
                     return;
                 }
-                
+
                 // Display files
                 listElem.innerHTML = '<h3>Your Files:</h3>';
                 const ul = document.createElement('ul');
-                
+
                 data.files.forEach(file => {
                     const li = document.createElement('li');
                     li.innerHTML = `
@@ -311,7 +324,7 @@
                     `;
                     ul.appendChild(li);
                 });
-                
+
                 listElem.appendChild(ul);
             } catch (error) {
                 listElem.className = 'error';
@@ -329,4 +342,5 @@
         });
     </script>
 </body>
+
 </html>

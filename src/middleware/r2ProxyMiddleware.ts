@@ -11,7 +11,7 @@ import { FileService } from '../services/FileService';
 export const proxyR2File = async (req: Request, res: Response, next: NextFunction) => {
     try {
         const filename = req.params.filename;
-        
+
         if (!filename) {
             return res.status(400).json({
                 success: false,
@@ -64,7 +64,7 @@ export const proxyR2File = async (req: Request, res: Response, next: NextFunctio
 
         // Determine the source URL for the file
         let sourceUrl: string;
-        
+
         if (file.r2ObjectKey) {
             // Generate a fresh presigned URL with short expiry
             try {
@@ -103,14 +103,14 @@ export const proxyR2File = async (req: Request, res: Response, next: NextFunctio
             // Set appropriate headers
             res.setHeader('Content-Type', file.mimetype || 'application/octet-stream');
             res.setHeader('Content-Disposition', `inline; filename="${encodeURIComponent(file.originalname)}"`);
-            
+
             // Add cache control headers - cache public files longer
             if (file.isPublic) {
                 res.setHeader('Cache-Control', 'public, max-age=86400'); // 24 hours
             } else {
                 res.setHeader('Cache-Control', 'private, max-age=3600'); // 1 hour
             }
-            
+
             // Stream the response directly to the client
             response.data.pipe(res);
 
