@@ -21,7 +21,7 @@ console.log(`🌍 Environment: ${process.env.NODE_ENV || 'development'}`);
 console.log(`📂 Working directory: ${process.cwd()}`);
 console.log(`📁 Upload directory will be: ${getStaticServePath()}`);
 
-const allowedOrigins = process.env.CORS_ORIGIN?.split(',') || ['http://localhost:3000'];
+const allowedOrigins = process.env.CORS_ORIGIN?.split(',') || ['https://cloud-nest-ai-frontend.vercel.app'];
 
 app.use(cors({
     origin: function (origin, callback) {
