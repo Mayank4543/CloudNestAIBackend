@@ -21,7 +21,7 @@ console.log(`🌍 Environment: ${process.env.NODE_ENV || 'development'}`);
 console.log(`📂 Working directory: ${process.cwd()}`);
 console.log(`📁 Upload directory will be: ${getStaticServePath()}`);
 
-const allowedOrigins = process.env.CORS_ORIGIN?.split(',') || ['https://cloud-nest-ai-frontend.vercel.app'];
+const allowedOrigins = process.env.CORS_ORIGIN?.split(',') || ['https://cloud-nest-ai-frontend.vercel.app', 'http://localhost:3000'];
 
 app.use(cors({
     origin: function (origin, callback) {
@@ -44,11 +44,7 @@ const staticPath = getStaticServePath();
 console.log(`📁 Upload directory: ${staticPath}`);
 console.log(`🌐 Files accessible at: /uploads/<filename>`);
 
-// Import the proxy middleware directly
-import { proxyR2File } from './middleware/r2ProxyMiddleware';
 
-// Register direct proxy endpoint BEFORE the router to ensure it works regardless of router configuration
-app.get('/api/direct-proxy/:filename', proxyR2File);
 
 // Routes
 app.use('/api/files', fileRouter);
