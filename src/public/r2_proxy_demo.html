@@ -1,0 +1,332 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>CloudNest R2 Proxy Demo</title>
+    <style>
+        body {
+            font-family: Arial, sans-serif;
+            max-width: 800px;
+            margin: 0 auto;
+            padding: 20px;
+        }
+        h1 {
+            color: #333;
+        }
+        .container {
+            display: flex;
+            flex-direction: column;
+            gap: 20px;
+        }
+        .card {
+            border: 1px solid #ddd;
+            border-radius: 8px;
+            padding: 20px;
+            box-shadow: 0 2px 4px rgba(0, 0, 0, 0.1);
+        }
+        .comparison {
+            display: flex;
+            flex-wrap: wrap;
+            gap: 20px;
+        }
+        .comparison > div {
+            flex: 1;
+            min-width: 300px;
+        }
+        button {
+            background-color: #4CAF50;
+            color: white;
+            padding: 10px 15px;
+            border: none;
+            border-radius: 4px;
+            cursor: pointer;
+            margin: 10px 0;
+        }
+        button:hover {
+            background-color: #45a049;
+        }
+        pre {
+            background-color: #f5f5f5;
+            padding: 10px;
+            border-radius: 4px;
+            overflow-x: auto;
+        }
+        .error {
+            color: red;
+            font-weight: bold;
+        }
+        .success {
+            color: green;
+            font-weight: bold;
+        }
+        #imageContainer img {
+            max-width: 100%;
+            border: 1px solid #ddd;
+            margin-top: 10px;
+        }
+    </style>
+</head>
+<body>
+    <h1>CloudNest R2 Proxy Demo</h1>
+    <div class="container">
+        <div class="card">
+            <h2>Login</h2>
+            <div>
+                <label for="email">Email:</label>
+                <input type="email" id="email" value="user@example.com">
+            </div>
+            <div>
+                <label for="password">Password:</label>
+                <input type="password" id="password" value="password123">
+            </div>
+            <button id="loginButton">Login</button>
+            <div id="loginStatus"></div>
+        </div>
+
+        <div class="card">
+            <h2>File Access Comparison</h2>
+            <div class="comparison">
+                <div>
+                    <h3>✅ With Proxy (CORS-Free)</h3>
+                    <p>Using the new proxy endpoint to avoid CORS issues:</p>
+                    <pre>/api/files/proxy/:filename</pre>
+                    <button id="loadProxyButton">Load via Proxy</button>
+                    <div id="proxyResult"></div>
+                </div>
+                <div>
+                    <h3>❌ Direct R2 Access (CORS Issues)</h3>
+                    <p>Direct access to R2 URLs causes CORS errors:</p>
+                    <pre>https://bucket.r2.cloudflarestorage.com/...</pre>
+                    <button id="loadDirectButton">Load Directly</button>
+                    <div id="directResult"></div>
+                </div>
+            </div>
+        </div>
+
+        <div class="card">
+            <h2>Image Display</h2>
+            <p>Images loaded via proxy endpoint work perfectly:</p>
+            <button id="displayImageButton">Display Image</button>
+            <div id="imageContainer"></div>
+        </div>
+
+        <div class="card">
+            <h2>File Upload</h2>
+            <p>Upload a file to CloudNest:</p>
+            <div>
+                <input type="file" id="fileInput">
+                <label for="isPublic">Make file public:</label>
+                <input type="checkbox" id="isPublic">
+            </div>
+            <button id="uploadButton">Upload</button>
+            <div id="uploadStatus"></div>
+        </div>
+
+        <div class="card">
+            <h2>File Listing</h2>
+            <button id="listFilesButton">List My Files</button>
+            <div id="fileList"></div>
+        </div>
+    </div>
+
+    <script>
+        // Configuration
+        const API_BASE_URL = 'http://localhost:3000'; // Change this to match your API URL
+        let authToken = localStorage.getItem('authToken') || '';
+
+        // Login function
+        document.getElementById('loginButton').addEventListener('click', async () => {
+            const email = document.getElementById('email').value;
+            const password = document.getElementById('password').value;
+            const statusElem = document.getElementById('loginStatus');
+            
+            try {
+                statusElem.textContent = 'Logging in...';
+                const response = await fetch(`${API_BASE_URL}/api/auth/login`, {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json'
+                    },
+                    body: JSON.stringify({ email, password })
+                });
+                
+                const data = await response.json();
+                if (!response.ok) throw new Error(data.message || 'Login failed');
+                
+                authToken = data.token;
+                localStorage.setItem('authToken', authToken);
+                statusElem.className = 'success';
+                statusElem.textContent = 'Logged in successfully!';
+            } catch (error) {
+                statusElem.className = 'error';
+                statusElem.textContent = `Error: ${error.message}`;
+            }
+        });
+
+        // Load file via proxy
+        document.getElementById('loadProxyButton').addEventListener('click', async () => {
+            const resultElem = document.getElementById('proxyResult');
+            try {
+                resultElem.textContent = 'Loading...';
+                
+                // Replace with a real filename from your system
+                const filename = 'example.jpg'; 
+                
+                const response = await fetch(`${API_BASE_URL}/api/files/proxy/${filename}`, {
+                    headers: {
+                        'Authorization': `Bearer ${authToken}`
+                    }
+                });
+                
+                if (!response.ok) throw new Error(`Error: ${response.status}`);
+                
+                const blob = await response.blob();
+                resultElem.className = 'success';
+                resultElem.textContent = `Successfully loaded file: ${(blob.size / 1024).toFixed(2)} KB`;
+            } catch (error) {
+                resultElem.className = 'error';
+                resultElem.textContent = `Error: ${error.message}`;
+            }
+        });
+
+        // Try to load file directly (will cause CORS errors)
+        document.getElementById('loadDirectButton').addEventListener('click', async () => {
+            const resultElem = document.getElementById('directResult');
+            try {
+                resultElem.textContent = 'Loading...';
+                
+                // Replace with a direct R2 URL (this will fail due to CORS)
+                const directUrl = 'https://example-r2-bucket.r2.cloudflarestorage.com/example.jpg?signature=abc123';
+                
+                const response = await fetch(directUrl);
+                
+                if (!response.ok) throw new Error(`Error: ${response.status}`);
+                
+                const blob = await response.blob();
+                resultElem.className = 'success';
+                resultElem.textContent = `Successfully loaded file: ${(blob.size / 1024).toFixed(2)} KB`;
+            } catch (error) {
+                resultElem.className = 'error';
+                resultElem.textContent = `Error: ${error.message} (This is expected due to CORS policy)`;
+            }
+        });
+
+        // Display image via proxy
+        document.getElementById('displayImageButton').addEventListener('click', () => {
+            const container = document.getElementById('imageContainer');
+            container.innerHTML = '';
+            
+            // Replace with a real image filename from your system
+            const filename = 'example.jpg';
+            
+            const img = document.createElement('img');
+            img.alt = 'Sample Image';
+            
+            // The proxy endpoint properly sets content-type and avoids CORS
+            img.src = `${API_BASE_URL}/api/files/proxy/${filename}`;
+            
+            // Add auth token if needed for private files
+            if (authToken) {
+                img.crossOrigin = 'use-credentials';
+                // For private images, you'll need to include the token in your actual application
+                // This demo uses a simple approach for illustration
+                const tokenParam = `?token=${encodeURIComponent(authToken)}`;
+                img.src += tokenParam;
+            }
+            
+            container.appendChild(img);
+        });
+
+        // Upload file
+        document.getElementById('uploadButton').addEventListener('click', async () => {
+            const fileInput = document.getElementById('fileInput');
+            const isPublic = document.getElementById('isPublic').checked;
+            const statusElem = document.getElementById('uploadStatus');
+            
+            if (!fileInput.files || fileInput.files.length === 0) {
+                statusElem.className = 'error';
+                statusElem.textContent = 'Please select a file first';
+                return;
+            }
+            
+            const file = fileInput.files[0];
+            const formData = new FormData();
+            formData.append('file', file);
+            formData.append('isPublic', isPublic.toString());
+            
+            try {
+                statusElem.textContent = 'Uploading...';
+                
+                const response = await fetch(`${API_BASE_URL}/api/files/upload`, {
+                    method: 'POST',
+                    headers: {
+                        'Authorization': `Bearer ${authToken}`
+                    },
+                    body: formData
+                });
+                
+                const data = await response.json();
+                if (!response.ok) throw new Error(data.message || 'Upload failed');
+                
+                statusElem.className = 'success';
+                statusElem.textContent = `File uploaded successfully! ID: ${data.file?._id || 'Unknown'}`;
+            } catch (error) {
+                statusElem.className = 'error';
+                statusElem.textContent = `Error: ${error.message}`;
+            }
+        });
+
+        // List files
+        document.getElementById('listFilesButton').addEventListener('click', async () => {
+            const listElem = document.getElementById('fileList');
+            
+            try {
+                listElem.textContent = 'Loading files...';
+                
+                const response = await fetch(`${API_BASE_URL}/api/files`, {
+                    headers: {
+                        'Authorization': `Bearer ${authToken}`
+                    }
+                });
+                
+                const data = await response.json();
+                if (!response.ok) throw new Error(data.message || 'Failed to load files');
+                
+                if (!data.files || data.files.length === 0) {
+                    listElem.textContent = 'No files found';
+                    return;
+                }
+                
+                // Display files
+                listElem.innerHTML = '<h3>Your Files:</h3>';
+                const ul = document.createElement('ul');
+                
+                data.files.forEach(file => {
+                    const li = document.createElement('li');
+                    li.innerHTML = `
+                        <strong>${file.originalname}</strong> 
+                        (${(file.size / 1024).toFixed(2)} KB) 
+                        - <a href="${API_BASE_URL}/api/files/proxy/${file.filename}" target="_blank">View via Proxy</a>
+                    `;
+                    ul.appendChild(li);
+                });
+                
+                listElem.appendChild(ul);
+            } catch (error) {
+                listElem.className = 'error';
+                listElem.textContent = `Error: ${error.message}`;
+            }
+        });
+
+        // Check if already logged in
+        window.addEventListener('DOMContentLoaded', () => {
+            if (authToken) {
+                const statusElem = document.getElementById('loginStatus');
+                statusElem.className = 'success';
+                statusElem.textContent = 'Already logged in';
+            }
+        });
+    </script>
+</body>
+</html>
