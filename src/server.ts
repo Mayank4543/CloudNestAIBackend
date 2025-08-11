@@ -44,6 +44,12 @@ const staticPath = getStaticServePath();
 console.log(`📁 Upload directory: ${staticPath}`);
 console.log(`🌐 Files accessible at: /uploads/<filename>`);
 
+// Import the proxy middleware directly
+import { proxyR2File } from './middleware/r2ProxyMiddleware';
+
+// Register direct proxy endpoint BEFORE the router to ensure it works regardless of router configuration
+app.get('/api/direct-proxy/:filename', proxyR2File);
+
 // Routes
 app.use('/api/files', fileRouter);
 app.use('/api/auth', authRoutes);

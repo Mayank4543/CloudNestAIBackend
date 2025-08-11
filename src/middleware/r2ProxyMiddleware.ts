@@ -21,6 +21,10 @@ export const proxyR2File = async (req: Request, res: Response, next: NextFunctio
 
         console.log(`R2 Proxy: Processing request for ${filename}`);
 
+        // Clean the filename parameter - remove any URL encoding and trailing spaces
+        const cleanedFilename = decodeURIComponent(filename).trim();
+        console.log(`R2 Proxy: Cleaned filename: "${cleanedFilename}"`);
+
         // For private files, extract user ID from token if present
         let userId: string | undefined = undefined;
 
@@ -42,15 +46,101 @@ export const proxyR2File = async (req: Request, res: Response, next: NextFunctio
             }
         }
 
-        // Find the file in the database
-        const file = await File.findOne({ filename });
+        console.log(`R2 Proxy: Searching for file with filename: "${cleanedFilename}"`);
+
+        // Find the file in the database - try multiple approaches
+        let file = await File.findOne({ filename: cleanedFilename });
+
+        // If not found with exact match, try with the original filename
+        if (!file && cleanedFilename !== filename) {
+            file = await File.findOne({ filename });
+            if (file) {
+                console.log(`R2 Proxy: Found file using original filename`);
+            }
+        }
 
         if (!file) {
-            console.error(`R2 Proxy: File not found: ${filename}`);
-            return res.status(404).json({
-                success: false,
-                message: 'File not found'
-            });
+            console.error(`R2 Proxy: File not found: ${cleanedFilename}`);
+
+            // For debugging - let's check if we can find any file
+            const anyFile = await File.findOne({});
+            if (anyFile) {
+                console.log(`R2 Proxy: However, found at least one file in DB with filename: ${anyFile.filename}`);
+            } else {
+                console.log(`R2 Proxy: No files exist in the database at all`);
+            }
+
+            // Try these alternate lookup methods
+            try {
+                // Method 1: Try looking for partial match before the first dash
+                let partialMatches = null;
+
+                if (cleanedFilename.includes('-')) {
+                    const baseFilename = cleanedFilename.split('-')[0];
+                    console.log(`R2 Proxy: Trying to match on base filename: ${baseFilename}`);
+
+                    partialMatches = await File.find({
+                        filename: { $regex: new RegExp(baseFilename, 'i') }
+                    }).limit(1);
+                }
+
+                if (partialMatches && partialMatches.length > 0) {
+                    console.log(`R2 Proxy: Found partial match: ${partialMatches[0].filename}`);
+                    file = partialMatches[0];
+                } else {
+                    // Method 2: Try by originalname
+                    console.log(`R2 Proxy: Trying to match on original filename`);
+                    const fileByOriginal = await File.findOne({
+                        originalname: { $regex: new RegExp(cleanedFilename.split('-')[0], 'i') }
+                    });
+
+                    if (fileByOriginal) {
+                        console.log(`R2 Proxy: Found by original name: ${fileByOriginal.originalname}`);
+                        file = fileByOriginal;
+                    } else {
+                        // Method 3: Get the most recent file as a fallback
+                        console.log(`R2 Proxy: No matches found. Getting most recent file as fallback...`);
+                        const recentFile = await File.findOne().sort({ createdAt: -1 });
+
+                        if (recentFile) {
+                            console.log(`R2 Proxy: Using most recent file: ${recentFile.filename}`);
+                            // Don't automatically use this - just inform the user
+                            return res.status(404).json({
+                                success: false,
+                                message: 'File not found',
+                                requestedFilename: cleanedFilename,
+                                helpMessage: 'The file was not found. Try using the exact filename.',
+                                suggestions: [
+                                    {
+                                        message: 'Most recent file in the system:',
+                                        filename: recentFile.filename,
+                                        originalname: recentFile.originalname,
+                                        url: `/api/direct-proxy/${encodeURIComponent(recentFile.filename)}`
+                                    }
+                                ]
+                            });
+                        }
+                    }
+                }
+
+                // If we still don't have a file, return 404
+                if (!file) {
+                    return res.status(404).json({
+                        success: false,
+                        message: 'File not found',
+                        requestedFilename: cleanedFilename,
+                        helpMessage: 'The exact filename must match a record in the database'
+                    });
+                }
+
+            } catch (err) {
+                console.error(`R2 Proxy: Error during alternate lookup:`, err);
+                return res.status(500).json({
+                    success: false,
+                    message: 'Error looking up file',
+                    error: err instanceof Error ? err.message : 'Unknown error'
+                });
+            }
         }
 
         // Check access permissions
