@@ -1,0 +1,14 @@
+{
+  "name": "cloudnest-semantic-search",
+  "version": "1.0.0",
+  "description": "Semantic search implementation for CloudNest AI",
+  "main": "dist/server.js",
+  "scripts": {
+    "install-deps": "npm install"
+  },
+  "dependencies": {
+    "@xenova/transformers": "^2.11.0",
+    "pdf-parse": "^1.1.1",
+    "mammoth": "^1.6.0"
+  }
+}

@@ -4,6 +4,8 @@ import { S3Client, PutObjectCommand, GetObjectCommand } from '@aws-sdk/client-s3
 import { getSignedUrl } from '@aws-sdk/s3-request-presigner';
 import fs from 'fs';
 import path from 'path';
+import { SemanticFileService } from './SemanticFileService';
+import { EmbeddingService } from './EmbeddingService';
 
 // Interface for file creation data
 export interface CreateFileData {
@@ -325,11 +327,16 @@ export class FileService {
       let r2Url = '';
       let r2ObjectKey = '';
       let virtualPath = fileData.path || ''; // Keep original path as fallback
+      let localFilePath = ''; // Track the local file path for text extraction
+      let saveBuffer = Buffer.alloc(0); // Keep a copy of the buffer for text extraction
 
       // Check if this is a Buffer upload (memory storage) or path (disk storage)
       // fileData.buffer will be present if using memory storage
       if (fileData.buffer) {
         try {
+          // Save a copy of the buffer for text extraction later
+          saveBuffer = Buffer.from(fileData.buffer);
+
           // Upload file directly from memory buffer to R2
           const r2Result = await this.uploadFileToR2(
             fileData.buffer,
@@ -340,6 +347,24 @@ export class FileService {
           r2ObjectKey = r2Result.objectKey;
           virtualPath = r2Result.virtualPath; // Use the virtual path from R2 upload
 
+          // Save a temporary copy for text extraction if it's a supported type
+          const ext = path.extname(fileData.originalname).toLowerCase();
+          if (['.pdf', '.docx', '.txt'].includes(ext)) {
+            try {
+              // Create temporary file
+              const tempDir = path.join(process.cwd(), 'temp');
+              if (!fs.existsSync(tempDir)) {
+                fs.mkdirSync(tempDir, { recursive: true });
+              }
+              localFilePath = path.join(tempDir, fileData.filename);
+              fs.writeFileSync(localFilePath, saveBuffer);
+              console.log(`Saved temporary file for text extraction: ${localFilePath}`);
+            } catch (tempError) {
+              console.error('Failed to save temporary file for text extraction:', tempError);
+              // Non-critical error, continue without text extraction
+            }
+          }
+
         } catch (uploadError) {
           console.error('Failed to upload to R2 from memory:', uploadError);
           throw new Error(`Failed to upload file: ${uploadError instanceof Error ? uploadError.message : 'Unknown error'}`);
@@ -347,8 +372,13 @@ export class FileService {
       } else if (fileData.path) {
         // Legacy path-based upload (disk storage)
         try {
+          // Keep track of the local path for text extraction
+          localFilePath = fileData.path;
+
           // Read file from disk and upload to R2
           const fileContent = fs.readFileSync(fileData.path);
+          saveBuffer = Buffer.from(fileContent); // Keep a copy for text extraction
+
           const r2Result = await this.uploadFileToR2(
             fileContent,
             fileData.originalname,
@@ -358,20 +388,9 @@ export class FileService {
           r2ObjectKey = r2Result.objectKey;
           virtualPath = r2Result.virtualPath;
 
-          // Always try to delete the local file after successful R2 upload
-          // It's not needed anymore and will just take up disk space
-          try {
-            if (fs.existsSync(fileData.path)) {
-              fs.unlinkSync(fileData.path);
-
-            }
-          } catch (unlinkError) {
-            console.error('Failed to delete local file:', unlinkError);
-            // Non-critical error, continue
-          }
+          // We'll delete the file after text extraction
         } catch (uploadError) {
           console.error('Failed to upload to R2 from disk:', uploadError);
-
         }
       } else {
         throw new Error('Neither file buffer nor path provided for upload');
@@ -391,12 +410,67 @@ export class FileService {
         r2ObjectKey: r2ObjectKey || null // Always store R2 object key, null if not available
       });
 
-      // Save and return the file
+      // Save the file
       const savedFile = await newFile.save();
-      return savedFile;
 
+      // Process file for semantic search if it's a supported type
+      const ext = path.extname(fileData.originalname).toLowerCase();
+      if (localFilePath && ['.pdf', '.docx', '.txt'].includes(ext)) {
+        try {
+          console.log(`Processing file for semantic search: ${savedFile._id}`);
+
+          // Process asynchronously and don't wait
+          this.processFileForSemanticSearch(localFilePath, savedFile._id as Types.ObjectId).catch(err => {
+            console.error(`Failed to process file ${savedFile._id} for semantic search:`, err);
+          });
+        } catch (semanticError) {
+          console.error('Error setting up semantic processing:', semanticError);
+          // Non-critical error, continue
+        }
+      }
+
+      // Clean up local file if it was from disk storage (we kept it for text extraction)
+      if (fileData.path && fs.existsSync(fileData.path)) {
+        try {
+          fs.unlinkSync(fileData.path);
+        } catch (unlinkError) {
+          console.error('Failed to delete local file:', unlinkError);
+          // Non-critical error, continue
+        }
+      }
+
+      return savedFile;
     } catch (error) {
       throw new Error(`Failed to save file: ${error instanceof Error ? error.message : 'Unknown error'}`);
+    }
+  }
+
+  /**
+   * Process a file for semantic search by extracting text and generating embeddings
+   * @param filePath - Path to the file
+   * @param fileId - MongoDB ID of the file
+   * @returns Promise<void>
+   */
+  private static async processFileForSemanticSearch(filePath: string, fileId: Types.ObjectId): Promise<void> {
+    try {
+      console.log(`Starting semantic processing for file: ${fileId}`);
+
+      // Process the file to extract text and generate embedding
+      const metadata = await SemanticFileService.processFileForEmbedding(filePath, fileId);
+
+      // Save the embedding to the file document
+      await SemanticFileService.saveFileMetadata(metadata);
+
+      console.log(`Semantic processing completed for file: ${fileId}`);
+
+      // Delete temporary file if it exists
+      if (fs.existsSync(filePath) && filePath.includes('temp')) {
+        fs.unlinkSync(filePath);
+        console.log(`Deleted temporary file: ${filePath}`);
+      }
+    } catch (error) {
+      console.error(`Error processing file ${fileId} for semantic search:`, error);
+      // Don't rethrow, this is a background task
     }
   }
 

@@ -5,8 +5,10 @@ import dotenv from 'dotenv';
 import path from 'path';
 import fileRouter from './routes/fileRouter';
 import authRoutes from './routes/authRoutes';
+import semanticSearchRoutes from './routes/semanticSearchRoutes';
 import { getStaticServePath, ensureUploadDir } from './utils/uploadPaths';
 import { serveUploadedFile } from './middleware/fileServingMiddleware';
+import { EmbeddingService } from './services/EmbeddingService';
 
 dotenv.config();
 
@@ -59,6 +61,7 @@ console.log(`🌐 Files accessible at: /uploads/<filename>`);
 // Routes
 app.use('/api/files', fileRouter);
 app.use('/api/auth', authRoutes);
+app.use('/api/semantic', semanticSearchRoutes);
 
 app.get('/health', (_req, res) => {
     res.status(200).json({ success: true, message: 'OK' });
@@ -84,6 +87,12 @@ const connectToMongoDB = async () => {
 const startServer = async () => {
     try {
         await connectToMongoDB();
+
+        // Initialize the embedding model in the background
+        EmbeddingService.initializeModel().catch(error => {
+            console.error('❌ Failed to initialize embedding model:', error);
+            // Don't crash the server if model fails to load
+        });
 
         app.listen(PORT, () => {
             console.log(`🚀 Server running on port ${PORT}`);

@@ -114,7 +114,8 @@
   "include": [
     "src/server.ts",
     "src/**/*",
-    "src/types/**/*"
+    "src/types/**/*",
+    "src/types/declarations/**/*.d.ts"
   ],
   "exclude": [
     "node_modules",
