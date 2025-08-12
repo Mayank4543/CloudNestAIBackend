@@ -144,7 +144,7 @@ export const proxyR2File = async (req: Request, res: Response, next: NextFunctio
                                         message: 'Most recent file in the system:',
                                         filename: recentFile.filename,
                                         originalname: recentFile.originalname,
-                                        url: `/api/direct-proxy/${encodeURIComponent(recentFile.filename)}`
+                                        url: `/api/proxy/${encodeURIComponent(recentFile.filename)}`
                                     }
                                 ]
                             });

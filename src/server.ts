@@ -21,17 +21,27 @@ console.log(`🌍 Environment: ${process.env.NODE_ENV || 'development'}`);
 console.log(`📂 Working directory: ${process.cwd()}`);
 console.log(`📁 Upload directory will be: ${getStaticServePath()}`);
 
-const allowedOrigins = process.env.CORS_ORIGIN?.split(',') || ['https://cloud-nest-ai-frontend.vercel.app'];
+const allowedOrigins = process.env.CORS_ORIGIN?.split(',') || [
+    'https://cloud-nest-ai-frontend.vercel.app',
+    'http://localhost:3000',
+    'http://127.0.0.1:3000'
+];
 
 app.use(cors({
     origin: function (origin, callback) {
-        if (!origin || allowedOrigins.includes(origin)) {
+        // Allow requests with no origin (like mobile apps, Postman, etc.)
+        if (!origin) return callback(null, true);
+
+        // Allow if origin is in the allowed list or if in development
+        if (allowedOrigins.includes(origin) || process.env.NODE_ENV === 'development') {
             callback(null, true);
         } else {
+            console.log(`CORS blocked for origin: ${origin}`);
             callback(new Error('Not allowed by CORS'));
         }
     },
-    credentials: true
+    credentials: true,
+    maxAge: 86400 // CORS preflight cache (24 hours)
 }));
 
 app.use(express.json({ limit: '50mb' }));

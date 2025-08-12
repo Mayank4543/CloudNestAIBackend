@@ -262,6 +262,49 @@ export class FileController {
                 return;
             }
 
+            // Check if client wants JSON response (for API calls) vs file download
+            const acceptHeader = req.headers.accept || '';
+            const formatQuery = req.query.format as string;
+            const wantsJson = acceptHeader.includes('application/json') || formatQuery === 'json';
+
+            console.log('FileController.getFileById debug:', {
+                acceptHeader,
+                formatQuery,
+                wantsJson,
+                fileId: id,
+                hasR2Url: !!file.r2Url
+            });
+
+            if (wantsJson) {
+                console.log('Returning JSON response for file:', id);
+                // Return file metadata as JSON (for ShareModal and other API consumers)
+                let fileWithUrl;
+                if (file.r2Url) {
+                    fileWithUrl = {
+                        ...file,
+                        url: file.r2Url,
+                        storedInR2: true
+                    };
+                } else {
+                    const filename = extractFilename(file.path);
+                    fileWithUrl = {
+                        ...file,
+                        url: getFileUrl(filename, req),
+                        storedInR2: false
+                    };
+                }
+
+                res.status(200).json({
+                    success: true,
+                    message: 'File retrieved successfully',
+                    data: fileWithUrl
+                });
+                return;
+            }
+
+            console.log('Proceeding with file download/redirect for file:', id);
+
+            // For direct file access (browser navigation), serve the file or redirect
             // Check if the file exists on local disk
             if (file.path && fs.existsSync(file.path)) {
                 // If local file exists, serve it directly
