@@ -142,6 +142,9 @@ fileRouter.get('/', authenticateToken, FileController.getAllFiles);
 fileRouter.get('/search', authenticateToken, FileController.searchFiles);
 fileRouter.get('/stats', authenticateToken, FileController.getFileStats);
 
+// New dedicated endpoint for getting file info as JSON (never redirects)
+fileRouter.get('/:id/info', authenticateToken, FileController.getFileInfo);
+
 // Generic param routes MUST come last
 fileRouter.get('/:id', authenticateToken, FileController.getFileById);
 fileRouter.delete('/:id', authenticateToken, FileController.deleteFile);

@@ -635,4 +635,62 @@ export class FileController {
             });
         }
     }
+
+    // New dedicated method to get file info as JSON (for ShareModal and API consumers)
+    // This will NEVER redirect and ALWAYS returns JSON
+    public static async getFileInfo(req: Request, res: Response): Promise<void> {
+        try {
+            const { id } = req.params;
+
+            // Check if user is authenticated
+            if (!req.user || !req.user._id) {
+                res.status(401).json({
+                    success: false,
+                    message: 'User authentication required'
+                });
+                return;
+            }
+
+            const file = await FileService.getFileById(id, req.user._id.toString());
+
+            if (!file) {
+                res.status(404).json({
+                    success: false,
+                    message: 'File not found or access denied'
+                });
+                return;
+            }
+
+            // Always return JSON metadata - never redirect
+            let fileWithUrl;
+            if (file.r2Url) {
+                fileWithUrl = {
+                    ...file,
+                    url: file.r2Url,
+                    storedInR2: true
+                };
+            } else {
+                const filename = extractFilename(file.path);
+                fileWithUrl = {
+                    ...file,
+                    url: getFileUrl(filename, req),
+                    storedInR2: false
+                };
+            }
+
+            res.status(200).json({
+                success: true,
+                message: 'File info retrieved successfully',
+                data: fileWithUrl
+            });
+
+        } catch (error) {
+            console.error('Error getting file info:', error);
+            res.status(500).json({
+                success: false,
+                message: 'Error getting file info',
+                error: error instanceof Error ? error.message : 'Unknown error'
+            });
+        }
+    }
 }
