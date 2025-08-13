@@ -1,6 +1,6 @@
 import { EmbeddingService } from './EmbeddingService';
-import { TextExtractorService } from './TextExtractorService';
-import { SemanticSearchService } from './SemanticSearchService'
+import { TextExtractorService, TextExtractionInput } from './TextExtractorService';
+import { SemanticSearchService } from './SemanticSearchService';
 import fs from 'fs';
 import path from 'path';
 import File, { IFile } from '../models/File';
@@ -16,34 +16,68 @@ export interface FileMetadataWithEmbedding {
 }
 
 /**
+ * Interface for file embedding processing input
+ */
+export interface FileEmbeddingInput {
+  // Either filePath or buffer must be provided
+  filePath?: string;
+  buffer?: Buffer;
+  // If buffer is provided, these are required
+  mimetype?: string;
+  filename?: string;
+  // File ID is always required
+  fileId: string | Types.ObjectId;
+}
+
+/**
  * Service for handling semantic embedding operations
  */
 export class SemanticFileService {
   /**
    * Process a file to extract text and generate embedding
-   * @param filePath - Path to the file
-   * @param fileId - MongoDB ID of the file
+   * Support both file path and buffer input
+   * @param input - FileEmbeddingInput with file information
    * @returns Promise<FileMetadataWithEmbedding> - File metadata with embedding
    */
-  public static async processFileForEmbedding(filePath: string, fileId: string | Types.ObjectId): Promise<FileMetadataWithEmbedding> {
+  public static async processFileForEmbedding(input: FileEmbeddingInput): Promise<FileMetadataWithEmbedding> {
     try {
-      // Validate file exists
-      if (!fs.existsSync(filePath)) {
-        throw new Error(`File not found: ${filePath}`);
+      // Check that we have either filePath or buffer
+      if (!input.filePath && !input.buffer) {
+        throw new Error('Either filePath or buffer must be provided');
       }
 
-      // Get file extension
-      const ext = path.extname(filePath).toLowerCase();
+      // Check if buffer has required metadata
+      if (input.buffer && (!input.mimetype || !input.filename)) {
+        throw new Error('mimetype and filename must be provided when processing buffer');
+      }
+
+      // Determine file type support
+      let fileExtension: string;
+      if (input.filePath) {
+        fileExtension = path.extname(input.filePath).toLowerCase();
+      } else if (input.filename) {
+        fileExtension = path.extname(input.filename).toLowerCase();
+      } else {
+        throw new Error('Cannot determine file type');
+      }
 
       // Check if file type is supported for text extraction
       const supportedExtensions = ['.pdf', '.docx', '.txt'];
-      if (!supportedExtensions.includes(ext)) {
-        throw new Error(`Unsupported file type for text extraction: ${ext}`);
+      if (!supportedExtensions.includes(fileExtension)) {
+        throw new Error(`Unsupported file type for text extraction: ${fileExtension}`);
       }
 
-      // Extract text from file
-      console.log(`Extracting text from ${filePath}`);
-      const text = await TextExtractorService.extractTextFromFile(filePath);
+      // Prepare extraction input
+      const extractionInput: TextExtractionInput = {
+        filePath: input.filePath,
+        buffer: input.buffer,
+        mimetype: input.mimetype,
+        filename: input.filename
+      };
+
+      // Extract text from file or buffer
+      console.log(`Extracting text from ${input.filePath || input.filename}`);
+      const text = await TextExtractorService.extractText(extractionInput);
 
       if (!text || text.trim().length === 0) {
         throw new Error('No text content could be extracted from the file');
@@ -55,7 +89,7 @@ export class SemanticFileService {
 
       // Prepare metadata
       const metadata: FileMetadataWithEmbedding = {
-        fileId,
+        fileId: input.fileId,
         embedding,
         textContent: text.substring(0, 1000) // Store a preview of the text (first 1000 chars)
       };
@@ -65,6 +99,19 @@ export class SemanticFileService {
       console.error('Error processing file for embedding:', error);
       throw new Error(`Failed to process file for embedding: ${error instanceof Error ? error.message : 'Unknown error'}`);
     }
+  }
+
+  /**
+   * Legacy method for backward compatibility
+   * @param filePath - Path to the file
+   * @param fileId - MongoDB ID of the file
+   * @returns Promise<FileMetadataWithEmbedding> - File metadata with embedding
+   */
+  public static async processFileFromPath(filePath: string, fileId: string | Types.ObjectId): Promise<FileMetadataWithEmbedding> {
+    return this.processFileForEmbedding({
+      filePath,
+      fileId
+    });
   }
 
   /**

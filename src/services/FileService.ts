@@ -456,7 +456,10 @@ export class FileService {
       console.log(`Starting semantic processing for file: ${fileId}`);
 
       // Process the file to extract text and generate embedding
-      const metadata = await SemanticFileService.processFileForEmbedding(filePath, fileId);
+      const metadata = await SemanticFileService.processFileForEmbedding({
+        filePath: filePath,
+        fileId: fileId
+      });
 
       // Save the embedding to the file document
       await SemanticFileService.saveFileMetadata(metadata);

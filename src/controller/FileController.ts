@@ -3,8 +3,9 @@ import { FileService, CreateFileData } from '../services/FileService';
 import { getFileUrl, extractFilename, getUploadDir } from '../utils/uploadPaths';
 import fs from 'fs';
 import path from 'path';
-
+import SemanticFileService, { FileMetadataWithEmbedding } from '../services/SemanticFileService';
 // Controller for file operations
+import { Types } from 'mongoose';
 export class FileController {
 
     // Helper method to add public URL to file objects
@@ -99,38 +100,88 @@ export class FileController {
             // Save file using service
             const savedFile = await FileService.saveFile(fileData);
 
-
-            const filename = extractFilename(savedFile.path);
-            const fileUrl = savedFile.r2Url || getFileUrl(filename, req);
-
-            // Return file metadata
-            res.status(201).json({
-                success: true,
-                message: 'File uploaded successfully',
-                data: {
-                    id: savedFile._id,
-                    filename: savedFile.filename,
-                    originalname: savedFile.originalname,
-                    mimetype: savedFile.mimetype,
-                    size: savedFile.size,
-                    path: savedFile.path,
-                    url: fileUrl, // R2 URL if available, otherwise local URL
-                    userId: savedFile.userId,
-                    isPublic: savedFile.isPublic,
-                    createdAt: savedFile.createdAt,
-                    tags: savedFile.tags,
-                    storedInR2: !!savedFile.r2Url
+            // Check if the file type is supported for text extraction
+            const supportedMimetypes = [
+                'application/pdf',
+                'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
+                'text/plain'
+            ];
+            
+            // Process file for embedding generation if it's a supported type
+            if (supportedMimetypes.includes(req.file.mimetype) && req.file.buffer) {
+                try {
+                    const { SemanticFileService } = require('../services/SemanticFileService');
+                    
+                    // Process the file buffer directly for embedding generation
+                    console.log(`Processing file buffer for semantic search: ${savedFile._id}`);
+                    
+                    // Generate embedding asynchronously
+                    SemanticFileService.processFileForEmbedding({
+                        buffer: req.file.buffer,
+                        mimetype: req.file.mimetype,
+                        filename: req.file.originalname,
+                        fileId: savedFile._id
+                    })
+                    .then((metadata: FileMetadataWithEmbedding) => {
+                        console.log(`✅ Successfully generated embedding for file: ${savedFile._id}`);
+                        // Save the embedding and text preview to the file document
+                        return SemanticFileService.saveFileMetadata(metadata);
+                    })
+                    .then(() => {
+                        console.log(`✅ Successfully saved embedding metadata for file: ${savedFile._id}`);
+                    })
+                    .catch((err: Error) => {
+                        console.error(`❌ Failed to process file ${savedFile._id} for semantic search:`, err);
+                    });
+                } catch (embeddingError) {
+                    console.error('❌ Failed to generate embedding:', embeddingError);
                 }
-            });
+            } else {
+                // Fallback to the path-based method if buffer isn't available
+                try {
+                    const filePath = savedFile.path;
+                    const fileId = savedFile._id as Types.ObjectId;
+                    
+                    // Use the legacy method that expects a file path
+                    const { SemanticFileService } = require('../services/SemanticFileService');
+                    await SemanticFileService.processFileFromPath(filePath, fileId);
+                    console.log(`✅ Semantic embedding generated for file ${fileId} using path method`);
+                } catch (embeddingError) {
+                    console.error('❌ Failed to generate embedding using path method:', embeddingError);
+                }
+            }
 
-        } catch (error) {
-            console.error('Error uploading file:', error);
-            res.status(500).json({
-                success: false,
-                message: 'Error uploading file',
-                error: error instanceof Error ? error.message : 'Unknown error'
-            });
-        }
+        const filename = extractFilename(savedFile.path);
+        const fileUrl = savedFile.r2Url || getFileUrl(filename, req);
+
+        // Return file metadata
+        res.status(201).json({
+            success: true,
+            message: 'File uploaded successfully',
+            data: {
+                id: savedFile._id,
+                filename: savedFile.filename,
+                originalname: savedFile.originalname,
+                mimetype: savedFile.mimetype,
+                size: savedFile.size,
+                path: savedFile.path,
+                url: fileUrl,
+                userId: savedFile.userId,
+                isPublic: savedFile.isPublic,
+                createdAt: savedFile.createdAt,
+                tags: savedFile.tags,
+                storedInR2: !!savedFile.r2Url
+            }
+        });
+
+    } catch (error) {
+        console.error('Error uploading file:', error);
+        res.status(500).json({
+            success: false,
+            message: 'Error uploading file',
+            error: error instanceof Error ? error.message : 'Unknown error'
+        });
+       }
     }
 
     // Fetch all uploaded files from MongoDB
