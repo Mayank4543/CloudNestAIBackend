@@ -65,12 +65,10 @@ export class SemanticSearchService {
       const results = await File.aggregate([
         {
           $search: {
-            vectorSearch: {
-              queryVector: queryEmbedding,
+            knnBeta: {
+              vector: queryEmbedding,
               path: "embedding",
-              numCandidates: 100,
-              limit: limit,
-              similarity: "cosine"
+              k: limit,
             }
           }
         },
@@ -96,6 +94,7 @@ export class SemanticSearchService {
           $limit: limit
         }
       ]);
+
       
       // Format results
       return results.map(file => ({
