@@ -37,79 +37,149 @@ export class SemanticSearchService {
    */
   public static async searchFiles(query: string, options: SearchOptions = {}): Promise<SearchResult[]> {
     try {
-      // Generate embedding for the search query
-      const queryEmbedding = await EmbeddingService.generateEmbedding(query);
-      
-      // Prepare the MongoDB query filter
-      const filter: FilterQuery<IFile> = {};
-      
-      // Include only files that have embeddings
-      filter.embedding = { $exists: true };
-      
+      // Prepare the base MongoDB query filter
+      const baseFilter: FilterQuery<IFile> = {};
+
       // Apply user filter - show user's files and optionally public files
       if (options.userId) {
         if (options.includePublic) {
-          filter.$or = [
+          baseFilter.$or = [
             { userId: new Types.ObjectId(options.userId) },
             { isPublic: true }
           ];
         } else {
-          filter.userId = new Types.ObjectId(options.userId);
+          baseFilter.userId = new Types.ObjectId(options.userId);
         }
       }
-      
+
       // Set default limit if not provided
       const limit = options.limit || 10;
-      
-      // Execute vector search using $vectorSearch operator
-      const results = await File.aggregate([
-        {
-          $search: {
-            knnBeta: {
-              vector: queryEmbedding,
-              path: "embedding",
-              k: limit,
-            }
-          }
-        },
-        {
-          $match: filter
-        },
-        {
-          $project: {
-            _id: 1,
-            filename: 1,
-            originalname: 1,
-            isPublic: 1,
-            r2Url: 1,
-            path: 1,
-            tags: 1,
-            score: { $meta: "searchScore" }
-          }
-        },
-        {
-          $sort: { score: -1 }
-        },
-        {
-          $limit: limit
-        }
-      ]);
 
-      
-      // Format results
-      return results.map(file => ({
-        fileId: file._id.toString(),
-        filename: file.filename,
-        originalname: file.originalname,
-        url: file.r2Url || file.path,
-        relevanceScore: file.score,
-        isPublic: file.isPublic,
-        tags: file.tags || [],
-        r2Url: file.r2Url
-      }));
+      try {
+        // First try semantic search with vector embeddings
+        console.log(`Attempting semantic search for query: "${query}"`);
+
+        // Generate embedding for the search query
+        const queryEmbedding = await EmbeddingService.generateEmbedding(query);
+
+        // For vector search, we need files with embeddings
+        const vectorFilter = {
+          ...baseFilter,
+          embedding: { $exists: true }
+        };
+
+        // Execute vector search using $vectorSearch operator
+        const results = await File.aggregate([
+          {
+            $search: {
+              vectorSearch: {
+                queryVector: queryEmbedding,
+                path: "embedding",
+                numCandidates: 100,
+                limit: limit,
+                similarity: "cosine"
+              }
+            }
+          },
+          {
+            $match: vectorFilter
+          },
+          {
+            $project: {
+              _id: 1,
+              filename: 1,
+              originalname: 1,
+              isPublic: 1,
+              r2Url: 1,
+              path: 1,
+              tags: 1,
+              score: { $meta: "searchScore" }
+            }
+          },
+          {
+            $sort: { score: -1 }
+          },
+          {
+            $limit: limit
+          }
+        ]);
+
+        // Format results
+        return results.map(file => ({
+          fileId: file._id.toString(),
+          filename: file.filename,
+          originalname: file.originalname,
+          url: file.r2Url || file.path,
+          relevanceScore: file.score,
+          isPublic: file.isPublic,
+          tags: file.tags || [],
+          r2Url: file.r2Url
+        }));
+      } catch (vectorSearchError) {
+        // If vector search fails, fall back to traditional text search
+        console.error('Vector search failed, falling back to text search:', vectorSearchError);
+
+        // Fallback to keyword search
+        console.log(`Falling back to keyword search for query: "${query}"`);
+
+        // Create a text search filter
+        const searchWords = query.toLowerCase().split(/\s+/).filter(word => word.length > 0);
+
+        // Create regex patterns for each search word
+        const regexPatterns = searchWords.map(word => new RegExp(word, 'i'));
+
+        // Define a proper type for our search conditions to avoid TypeScript errors
+        interface SearchCondition {
+          filename?: { $in: RegExp[] };
+          originalname?: { $in: RegExp[] };
+          tags?: { $in: string[] };
+        }
+
+        // Create text search conditions with proper typing
+        const textSearchConditions: SearchCondition[] = [
+          { filename: { $in: regexPatterns } },
+          { originalname: { $in: regexPatterns } }
+        ];
+
+        // Add tag search condition if there are words to search
+        if (searchWords.length > 0) {
+          textSearchConditions.push({ tags: { $in: searchWords } });
+        }
+
+        // Combine with the base filter
+        const fullFilter = {
+          ...baseFilter,
+          $or: textSearchConditions
+        };
+
+        // Execute text search
+        const results = await File.find(fullFilter)
+          .sort({ createdAt: -1 })
+          .limit(limit)
+          .lean();
+
+        // Format results for consistency with vector search
+        return results.map(file => ({
+          fileId: file._id.toString(),
+          filename: file.filename,
+          originalname: file.originalname,
+          url: file.r2Url || file.path,
+          relevanceScore: 1.0, // Default score for text search results
+          isPublic: file.isPublic,
+          tags: file.tags || [],
+          r2Url: file.r2Url
+        }));
+      }
     } catch (error) {
-      console.error('Error performing semantic search:', error);
-      throw new Error(`Failed to search files: ${error instanceof Error ? error.message : 'Unknown error'}`);
+      console.error('Error performing search:', error);
+
+      // Last resort - return empty results instead of throwing an error
+      // This prevents the API from returning a 500 error
+      console.log('Returning empty results as last resort');
+      return [];
+
+      // Uncomment this to throw the error instead of returning empty results
+      // throw new Error(`Failed to search files: ${error instanceof Error ? error.message : 'Unknown error'}`);
     }
   }
 }

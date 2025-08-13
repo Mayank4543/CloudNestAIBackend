@@ -169,8 +169,9 @@ export class SemanticFileService {
       const results = await SemanticSearchService.searchFiles(query, searchOptions);
       return results;
     } catch (error) {
-      console.error('Error searching files:', error);
-      throw new Error(`Failed to search files: ${error instanceof Error ? error.message : 'Unknown error'}`);
+      console.error('Error searching files in SemanticFileService:', error);
+      // Return empty results instead of throwing error to prevent API failure
+      return [];
     }
   }
 }

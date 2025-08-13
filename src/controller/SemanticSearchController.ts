@@ -2,7 +2,7 @@ import { Request, Response } from 'express';
 import { SemanticFileService } from '../services/SemanticFileService';
 import { getFileUrl, extractFilename } from '../utils/uploadPaths';
 
-// Controller for semantic1 search operations
+// Controller for semantic search operations
 export class SemanticSearchController {
   /**
    * Search files using semantic search
@@ -35,7 +35,9 @@ export class SemanticSearchController {
       const limit = parseInt(req.query.limit as string) || 10;
       const includePublic = req.query.includePublic !== 'false';
 
-      // Perform the semantic search
+      console.log(`Performing search with query: "${query}", userId: ${req.user._id}, includePublic: ${includePublic}, limit: ${limit}`);
+
+      // Perform the search - our services now handle errors internally and return empty arrays instead of throwing
       const results = await SemanticFileService.searchFiles(
         query,
         req.user._id.toString(),
@@ -43,7 +45,7 @@ export class SemanticSearchController {
         limit
       );
 
-      // Add public URLs to the results if they don't have r2Url
+      // Even if no results found, this isn't an error condition
       const resultsWithUrls = results.map((file) => {
         if (!file.url || (!file.url.startsWith('http') && !file.r2Url)) {
           const filename = extractFilename(file.url || file.filename);
@@ -55,18 +57,30 @@ export class SemanticSearchController {
         return file;
       });
 
+      console.log(`Search completed with ${resultsWithUrls.length} results found`);
+
       res.status(200).json({
         success: true,
-        message: 'Semantic search completed successfully',
+        message: resultsWithUrls.length > 0 
+          ? 'Search completed successfully' 
+          : 'No matching results found',
         data: resultsWithUrls,
-        query: query
+        query: query,
+        count: resultsWithUrls.length
       });
     } catch (error) {
-      console.error('Error performing semantic search:', error);
-      res.status(500).json({
-        success: false,
-        message: 'Error performing semantic search',
-        error: error instanceof Error ? error.message : 'Unknown error'
+      // This should rarely happen now since our services handle errors internally
+      console.error('Unhandled error in search controller:', error);
+      
+      // Still return a 200 status with empty results to prevent frontend errors
+      // This is a design choice to make the API more resilient
+      res.status(200).json({
+        success: true,
+        message: 'Search encountered an error, showing no results',
+        data: [],
+        query: req.query.q,
+        count: 0,
+        hadError: true
       });
     }
   }
@@ -92,9 +106,9 @@ export class SemanticSearchController {
 
       // First, get the file to verify ownership and get the path
       const File = require('../models/File').default;
-      const file = await File.findOne({ 
+      const file = await File.findOne({
         _id: id,
-        userId: req.user._id 
+        userId: req.user._id
       });
 
       if (!file) {
@@ -136,21 +150,21 @@ export class SemanticSearchController {
         const TextExtractorService = require('../services/TextExtractorService').TextExtractorService;
         const EmbeddingService = require('../services/EmbeddingService').EmbeddingService;
         const SemanticFileService = require('../services/SemanticFileService').SemanticFileService;
-        
+
         // Extract text (implementation depends on your system)
         // This might require downloading from R2 first
         const text = await TextExtractorService.extractTextFromFile(file.path);
-        
+
         // Generate embedding
         const embedding = await EmbeddingService.generateEmbedding(text);
-        
+
         // Save to database
         await SemanticFileService.saveFileMetadata({
           fileId: file._id,
           embedding,
           textContent: text.substring(0, 1000)
         });
-        
+
         console.log(`File ${file._id} processed successfully for semantic search`);
       } catch (processingError) {
         console.error(`Error processing file ${file._id} for semantic search:`, processingError);

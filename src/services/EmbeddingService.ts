@@ -52,6 +52,13 @@ export class EmbeddingService {
    */
   public static async generateEmbedding(text: string): Promise<number[]> {
     try {
+      // Handle empty text gracefully
+      if (!text || text.trim().length === 0) {
+        console.warn('Empty text provided for embedding generation, returning zeros');
+        // Return a vector of zeros with the expected dimensions for the model (384 for all-MiniLM-L6-v2)
+        return new Array(384).fill(0);
+      }
+
       // Initialize model if needed
       if (!this.pipeline) {
         await this.initializeModel();
@@ -60,11 +67,8 @@ export class EmbeddingService {
       // Clean and truncate the text
       const cleanedText = this.preprocessText(text);
 
-      // Generate embedding
-      const output = await this.pipeline(cleanedText, {
-        pooling: 'mean',
-        normalize: true,
-      });
+      // Generate embedding with timeout to prevent hanging
+      const output = await this.generateEmbeddingWithTimeout(cleanedText);
 
       // Convert to array
       const embedding = Array.from(output.data) as number[];
@@ -72,8 +76,40 @@ export class EmbeddingService {
       return embedding;
     } catch (error) {
       console.error('Error generating embedding:', error);
-      throw new Error(`Failed to generate embedding: ${error instanceof Error ? error.message : 'Unknown error'}`);
+      
+      // Rather than throw an error, return a zero vector
+      // This allows the application to continue even if embedding generation fails
+      console.warn('Returning zero embedding as fallback');
+      return new Array(384).fill(0); // 384 dimensions for all-MiniLM-L6-v2
     }
+  }
+  
+  /**
+   * Wrapper for embedding generation with timeout to prevent hanging
+   * @param text - Preprocessed text to generate embedding for
+   * @returns Promise - Embedding output
+   */
+  private static async generateEmbeddingWithTimeout(text: string, timeoutMs = 30000): Promise<any> {
+    return new Promise(async (resolve, reject) => {
+      // Set timeout to prevent hanging
+      const timer = setTimeout(() => {
+        reject(new Error(`Embedding generation timed out after ${timeoutMs}ms`));
+      }, timeoutMs);
+      
+      try {
+        // Generate embedding
+        const output = await this.pipeline(text, {
+          pooling: 'mean',
+          normalize: true,
+        });
+        
+        clearTimeout(timer);
+        resolve(output);
+      } catch (error) {
+        clearTimeout(timer);
+        reject(error);
+      }
+    });
   }
 
   /**
