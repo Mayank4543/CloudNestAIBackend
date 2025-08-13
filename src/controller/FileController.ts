@@ -104,17 +104,24 @@ export class FileController {
             const supportedMimetypes = [
                 'application/pdf',
                 'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
-                'text/plain'
+                'text/plain',
+                'text/csv',
+                'image/jpeg',
+                'image/jpg',
+                'image/png',
+                'image/bmp',
+                'image/tiff',
+                'image/webp'
             ];
-            
+
             // Process file for embedding generation if it's a supported type
             if (supportedMimetypes.includes(req.file.mimetype) && req.file.buffer) {
                 try {
                     const { SemanticFileService } = require('../services/SemanticFileService');
-                    
+
                     // Process the file buffer directly for embedding generation
                     console.log(`Processing file buffer for semantic search: ${savedFile._id}`);
-                    
+
                     // Generate embedding asynchronously
                     SemanticFileService.processFileForEmbedding({
                         buffer: req.file.buffer,
@@ -122,17 +129,17 @@ export class FileController {
                         filename: req.file.originalname,
                         fileId: savedFile._id
                     })
-                    .then((metadata: FileMetadataWithEmbedding) => {
-                        console.log(`✅ Successfully generated embedding for file: ${savedFile._id}`);
-                        // Save the embedding and text preview to the file document
-                        return SemanticFileService.saveFileMetadata(metadata);
-                    })
-                    .then(() => {
-                        console.log(`✅ Successfully saved embedding metadata for file: ${savedFile._id}`);
-                    })
-                    .catch((err: Error) => {
-                        console.error(`❌ Failed to process file ${savedFile._id} for semantic search:`, err);
-                    });
+                        .then((metadata: FileMetadataWithEmbedding) => {
+                            console.log(`✅ Successfully generated embedding for file: ${savedFile._id}`);
+                            // Save the embedding and text preview to the file document
+                            return SemanticFileService.saveFileMetadata(metadata);
+                        })
+                        .then(() => {
+                            console.log(`✅ Successfully saved embedding metadata for file: ${savedFile._id}`);
+                        })
+                        .catch((err: Error) => {
+                            console.error(`❌ Failed to process file ${savedFile._id} for semantic search:`, err);
+                        });
                 } catch (embeddingError) {
                     console.error('❌ Failed to generate embedding:', embeddingError);
                 }
@@ -141,7 +148,7 @@ export class FileController {
                 try {
                     const filePath = savedFile.path;
                     const fileId = savedFile._id as Types.ObjectId;
-                    
+
                     // Use the legacy method that expects a file path
                     const { SemanticFileService } = require('../services/SemanticFileService');
                     await SemanticFileService.processFileFromPath(filePath, fileId);
@@ -151,37 +158,37 @@ export class FileController {
                 }
             }
 
-        const filename = extractFilename(savedFile.path);
-        const fileUrl = savedFile.r2Url || getFileUrl(filename, req);
+            const filename = extractFilename(savedFile.path);
+            const fileUrl = savedFile.r2Url || getFileUrl(filename, req);
 
-        // Return file metadata
-        res.status(201).json({
-            success: true,
-            message: 'File uploaded successfully',
-            data: {
-                id: savedFile._id,
-                filename: savedFile.filename,
-                originalname: savedFile.originalname,
-                mimetype: savedFile.mimetype,
-                size: savedFile.size,
-                path: savedFile.path,
-                url: fileUrl,
-                userId: savedFile.userId,
-                isPublic: savedFile.isPublic,
-                createdAt: savedFile.createdAt,
-                tags: savedFile.tags,
-                storedInR2: !!savedFile.r2Url
-            }
-        });
+            // Return file metadata
+            res.status(201).json({
+                success: true,
+                message: 'File uploaded successfully',
+                data: {
+                    id: savedFile._id,
+                    filename: savedFile.filename,
+                    originalname: savedFile.originalname,
+                    mimetype: savedFile.mimetype,
+                    size: savedFile.size,
+                    path: savedFile.path,
+                    url: fileUrl,
+                    userId: savedFile.userId,
+                    isPublic: savedFile.isPublic,
+                    createdAt: savedFile.createdAt,
+                    tags: savedFile.tags,
+                    storedInR2: !!savedFile.r2Url
+                }
+            });
 
-    } catch (error) {
-        console.error('Error uploading file:', error);
-        res.status(500).json({
-            success: false,
-            message: 'Error uploading file',
-            error: error instanceof Error ? error.message : 'Unknown error'
-        });
-       }
+        } catch (error) {
+            console.error('Error uploading file:', error);
+            res.status(500).json({
+                success: false,
+                message: 'Error uploading file',
+                error: error instanceof Error ? error.message : 'Unknown error'
+            });
+        }
     }
 
     // Fetch all uploaded files from MongoDB

@@ -61,8 +61,8 @@ export class SemanticSearchController {
 
       res.status(200).json({
         success: true,
-        message: resultsWithUrls.length > 0 
-          ? 'Search completed successfully' 
+        message: resultsWithUrls.length > 0
+          ? 'Search completed successfully'
           : 'No matching results found',
         data: resultsWithUrls,
         query: query,
@@ -71,7 +71,7 @@ export class SemanticSearchController {
     } catch (error) {
       // This should rarely happen now since our services handle errors internally
       console.error('Unhandled error in search controller:', error);
-      
+
       // Still return a 200 status with empty results to prevent frontend errors
       // This is a design choice to make the API more resilient
       res.status(200).json({
@@ -123,7 +123,14 @@ export class SemanticSearchController {
       const supportedTypes = [
         'application/pdf',
         'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
-        'text/plain'
+        'text/plain',
+        'text/csv',
+        'image/jpeg',
+        'image/jpg',
+        'image/png',
+        'image/bmp',
+        'image/tiff',
+        'image/webp'
       ];
 
       if (!supportedTypes.includes(file.mimetype)) {
@@ -175,6 +182,132 @@ export class SemanticSearchController {
       res.status(500).json({
         success: false,
         message: 'Error processing file for semantic search',
+        error: error instanceof Error ? error.message : 'Unknown error'
+      });
+    }
+  }
+
+  /**
+   * Test CSV and image processing functionality
+   * @param req - Express request object
+   * @param res - Express response object
+   * @returns Promise<void>
+   */
+  public static async testProcessing(req: Request, res: Response): Promise<void> {
+    try {
+      // Check if user is authenticated
+      if (!req.user || !req.user._id) {
+        res.status(401).json({
+          success: false,
+          message: 'User authentication required'
+        });
+        return;
+      }
+
+      const { fileId } = req.body;
+
+      if (!fileId) {
+        res.status(400).json({
+          success: false,
+          message: 'File ID is required'
+        });
+        return;
+      }
+
+      // Get the file to verify ownership
+      const File = require('../models/File').default;
+      const file = await File.findOne({
+        _id: fileId,
+        userId: req.user._id
+      });
+
+      if (!file) {
+        res.status(404).json({
+          success: false,
+          message: 'File not found or access denied'
+        });
+        return;
+      }
+
+      // Check if file is a supported type
+      const supportedTypes = [
+        'application/pdf',
+        'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
+        'text/plain',
+        'text/csv',
+        'image/jpeg',
+        'image/jpg',
+        'image/png',
+        'image/bmp',
+        'image/tiff',
+        'image/webp'
+      ];
+
+      if (!supportedTypes.includes(file.mimetype)) {
+        res.status(400).json({
+          success: false,
+          message: `File type ${file.mimetype} is not supported for text extraction`
+        });
+        return;
+      }
+
+      // Process the file based on its type
+      let processingResult: any = {};
+
+      try {
+        if (file.mimetype === 'text/csv') {
+          // Process CSV file
+          const { CsvProcessorService } = require('../services/CsvProcessorService');
+          const result = await CsvProcessorService.processCsvBuffer(file.buffer, file.originalname);
+          processingResult = {
+            type: 'csv',
+            text: result.text,
+            metadata: result.metadata,
+            rows: result.rows.slice(0, 5), // Show first 5 rows
+            headers: result.headers
+          };
+        } else if (file.mimetype.startsWith('image/')) {
+          // Process image file
+          const { ImageProcessorService } = require('../services/ImageProcessorService');
+          const result = await ImageProcessorService.processImageBuffer(file.buffer, file.originalname);
+          processingResult = {
+            type: 'image',
+            text: result.text,
+            metadata: result.metadata
+          };
+        } else {
+          // Process other file types using existing TextExtractorService
+          const { TextExtractorService } = require('../services/TextExtractorService');
+          const text = await TextExtractorService.extractTextFromBuffer(file.buffer, file.mimetype, file.originalname);
+          processingResult = {
+            type: 'document',
+            text: text,
+            metadata: {
+              filename: file.originalname,
+              size: file.size,
+              mimetype: file.mimetype
+            }
+          };
+        }
+
+        res.status(200).json({
+          success: true,
+          message: 'File processing completed successfully',
+          data: processingResult
+        });
+      } catch (processingError) {
+        console.error('Error processing file:', processingError);
+        res.status(500).json({
+          success: false,
+          message: 'Error processing file',
+          error: processingError instanceof Error ? processingError.message : 'Unknown error'
+        });
+      }
+    } catch (error) {
+      console.error('Error in test processing:', error);
+      res.status(500).json({
+        success: false,
+        message: 'Error in test processing',
         error: error instanceof Error ? error.message : 'Unknown error'
       });
     }

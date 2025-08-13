@@ -43,7 +43,7 @@ async function downloadFileFromR2(url: string): Promise<Buffer> {
     const response = await axios.get(url, {
       responseType: 'arraybuffer'
     });
-    
+
     return Buffer.from(response.data);
   } catch (error) {
     console.error('❌ Failed to download file:', error);
@@ -60,43 +60,50 @@ async function processFile(fileId: string): Promise<boolean> {
   try {
     // Find the file in the database
     const file = await File.findById(fileId) as (typeof File & { _id: Types.ObjectId | string, [key: string]: any }) | null;
-    
+
     if (!file) {
       console.error(`❌ File not found with ID: ${fileId}`);
       return false;
     }
-    
+
     // Check if file already has embedding
     if (file.embedding && file.embedding.length > 0) {
       console.log(`⏭️ File ${fileId} already has embedding, skipping...`);
       return true;
     }
-    
+
     // Get file mimetype
     const mimetype = file.mimetype;
-    
+
     // Check if file type is supported
     const supportedMimetypes = [
       'application/pdf',
       'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
-      'text/plain'
+      'text/plain',
+      'text/csv',
+      'image/jpeg',
+      'image/jpg',
+      'image/png',
+      'image/bmp',
+      'image/tiff',
+      'image/webp'
     ];
-    
+
     if (!supportedMimetypes.includes(mimetype)) {
       console.log(`⏭️ File ${fileId} has unsupported mimetype: ${mimetype}, skipping...`);
       return false;
     }
-    
+
     // Generate or refresh R2 URL if needed
     let fileUrl: string;
-    
+
     if (file.r2ObjectKey) {
       // Generate a fresh presigned URL using the object key
       fileUrl = await FileService.generatePresignedUrl(file.r2ObjectKey);
     } else if (file.r2Url) {
       // Use the stored R2 URL (might be expired)
       fileUrl = file.r2Url;
-      
+
       // Try to extract the object key from the URL and store it for future use
       try {
         const objectKey = FileService.extractObjectKeyFromUrl(file.r2Url);
@@ -108,7 +115,7 @@ async function processFile(fileId: string): Promise<boolean> {
     } else if (file.path) {
       // Use local file path if available
       console.log(`🔍 File ${fileId} has local path: ${file.path}`);
-      
+
       try {
         // Process using the existing path method
         await SemanticFileService.processFileFromPath(file.path, file._id.toString());
@@ -122,11 +129,11 @@ async function processFile(fileId: string): Promise<boolean> {
       console.error(`❌ File ${fileId} has no R2 URL or local path`);
       return false;
     }
-    
+
     // Download the file from R2
     const fileBuffer = await downloadFileFromR2(fileUrl);
     console.log(`✅ Downloaded file: ${file.filename} (${fileBuffer.length} bytes)`);
-    
+
     // Process the file buffer for embedding
     const metadata = await SemanticFileService.processFileForEmbedding({
       buffer: fileBuffer,
@@ -134,10 +141,10 @@ async function processFile(fileId: string): Promise<boolean> {
       filename: file.filename,
       fileId: file._id.toString()
     });
-    
+
     // Save the embedding metadata
     await SemanticFileService.saveFileMetadata(metadata);
-    
+
     console.log(`✅ Successfully processed file ${fileId}`);
     return true;
   } catch (error) {
@@ -169,31 +176,31 @@ async function processAllFiles(limit = 10): Promise<void> {
       r2Url?: string,
       path?: string
     }>;
-    
+
     console.log(`🔍 Found ${files.length} files to process`);
-    
+
     // Initialize embedding model
     await EmbeddingService.initializeModel();
-    
+
     // Process files sequentially to avoid memory issues
     let successCount = 0;
     let failCount = 0;
-    
+
     for (const file of files) {
       console.log(`⏳ Processing file ${file._id.toString()}: ${file.filename}`);
-      
+
       const success = await processFile(file._id.toString());
-      
+
       if (success) {
         successCount++;
       } else {
         failCount++;
       }
-      
+
       // Add a small delay between files to avoid overwhelming the server
       await new Promise(resolve => setTimeout(resolve, 1000));
     }
-    
+
     console.log(`✅ Processing complete: ${successCount} succeeded, ${failCount} failed`);
   } catch (error) {
     console.error('❌ Failed to process files:', error);
@@ -209,10 +216,10 @@ async function processSpecificFile(fileId: string): Promise<void> {
   try {
     // Initialize embedding model
     await EmbeddingService.initializeModel();
-    
+
     // Process the specific file
     const success = await processFile(fileId);
-    
+
     if (success) {
       console.log(`✅ Successfully processed file ${fileId}`);
     } else {
@@ -230,10 +237,10 @@ async function main() {
   try {
     // Connect to MongoDB
     await connectToMongoDB();
-    
+
     // Check if a specific file ID was provided as a command-line argument
     const fileId = process.argv[2];
-    
+
     if (fileId) {
       console.log(`🔍 Processing specific file: ${fileId}`);
       await processSpecificFile(fileId);
@@ -241,15 +248,15 @@ async function main() {
       // Process a batch of files
       const limitArg = process.argv[3];
       const limit = limitArg ? parseInt(limitArg) : 10;
-      
+
       console.log(`🔍 Processing up to ${limit} files without embeddings`);
       await processAllFiles(limit);
     }
-    
+
     // Disconnect from MongoDB
     await mongoose.disconnect();
     console.log('✅ Disconnected from MongoDB');
-    
+
     process.exit(0);
   } catch (error) {
     console.error('❌ Error in main process:', error);

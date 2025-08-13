@@ -62,7 +62,7 @@ export class SemanticFileService {
       }
 
       // Check if file type is supported for text extraction
-      const supportedExtensions = ['.pdf', '.docx', '.txt'];
+      const supportedExtensions = ['.pdf', '.docx', '.txt', '.csv', '.jpg', '.jpeg', '.png', '.bmp', '.tiff', '.webp'];
       if (!supportedExtensions.includes(fileExtension)) {
         throw new Error(`Unsupported file type for text extraction: ${fileExtension}`);
       }

@@ -3,6 +3,8 @@ import path from 'path';
 import * as pdf from 'pdf-parse';
 import { extname } from 'path';
 import * as mammoth from 'mammoth';
+import { CsvProcessorService } from './CsvProcessorService';
+import { ImageProcessorService } from './ImageProcessorService';
 
 /**
  * Input for text extraction - either file path or buffer with mimetype
@@ -63,6 +65,15 @@ export class TextExtractorService {
           return await this.extractTextFromDocxFile(filePath);
         case '.txt':
           return await this.extractTextFromTxtFile(filePath);
+        case '.csv':
+          return await this.extractTextFromCsvFile(filePath);
+        case '.jpg':
+        case '.jpeg':
+        case '.png':
+        case '.bmp':
+        case '.tiff':
+        case '.webp':
+          return await this.extractTextFromImageFile(filePath);
         default:
           throw new Error(`Unsupported file type: ${extension}`);
       }
@@ -86,7 +97,7 @@ export class TextExtractorService {
   ): Promise<string> {
     try {
       // Determine file type from mimetype or filename
-      let fileType: 'pdf' | 'docx' | 'txt';
+      let fileType: 'pdf' | 'docx' | 'txt' | 'csv' | 'image';
 
       if (mimetype) {
         // Determine from mimetype
@@ -96,6 +107,10 @@ export class TextExtractorService {
           fileType = 'docx';
         } else if (mimetype === 'text/plain') {
           fileType = 'txt';
+        } else if (mimetype === 'text/csv') {
+          fileType = 'csv';
+        } else if (mimetype.startsWith('image/')) {
+          fileType = 'image';
         } else {
           throw new Error(`Unsupported MIME type: ${mimetype}`);
         }
@@ -109,6 +124,10 @@ export class TextExtractorService {
           fileType = 'docx';
         } else if (extension === '.txt') {
           fileType = 'txt';
+        } else if (extension === '.csv') {
+          fileType = 'csv';
+        } else if (['.jpg', '.jpeg', '.png', '.bmp', '.tiff', '.webp'].includes(extension)) {
+          fileType = 'image';
         } else {
           throw new Error(`Unsupported file extension: ${extension}`);
         }
@@ -124,12 +143,78 @@ export class TextExtractorService {
           return await this.extractTextFromDocxBuffer(buffer);
         case 'txt':
           return this.extractTextFromTxtBuffer(buffer);
+        case 'csv':
+          return await this.extractTextFromCsvBuffer(buffer, filename || 'unknown.csv');
+        case 'image':
+          return await this.extractTextFromImageBuffer(buffer, filename || 'unknown.jpg');
         default:
           throw new Error(`Unsupported file type: ${fileType}`);
       }
     } catch (error) {
       console.error('Error extracting text from buffer:', error);
       throw new Error(`Failed to extract text from buffer: ${error instanceof Error ? error.message : 'Unknown error'}`);
+    }
+  }
+
+  /**
+   * Extract text from a CSV file
+   * @param filePath - Path to the CSV file
+   * @returns Promise<string> - Extracted text
+   */
+  private static async extractTextFromCsvFile(filePath: string): Promise<string> {
+    try {
+      const result = await CsvProcessorService.processCsvFile(filePath);
+      return result.text;
+    } catch (error) {
+      console.error('Error extracting text from CSV file:', error);
+      throw new Error(`Failed to extract text from CSV file: ${error instanceof Error ? error.message : 'Unknown error'}`);
+    }
+  }
+
+  /**
+   * Extract text from a CSV buffer
+   * @param buffer - CSV file content as buffer
+   * @param filename - Original filename
+   * @returns Promise<string> - Extracted text
+   */
+  private static async extractTextFromCsvBuffer(buffer: Buffer, filename: string): Promise<string> {
+    try {
+      const result = await CsvProcessorService.processCsvBuffer(buffer, filename);
+      return result.text;
+    } catch (error) {
+      console.error('Error extracting text from CSV buffer:', error);
+      throw new Error(`Failed to extract text from CSV buffer: ${error instanceof Error ? error.message : 'Unknown error'}`);
+    }
+  }
+
+  /**
+   * Extract text from an image file
+   * @param filePath - Path to the image file
+   * @returns Promise<string> - Extracted text
+   */
+  private static async extractTextFromImageFile(filePath: string): Promise<string> {
+    try {
+      const result = await ImageProcessorService.processImageFile(filePath);
+      return result.text;
+    } catch (error) {
+      console.error('Error extracting text from image file:', error);
+      throw new Error(`Failed to extract text from image file: ${error instanceof Error ? error.message : 'Unknown error'}`);
+    }
+  }
+
+  /**
+   * Extract text from an image buffer
+   * @param buffer - Image file content as buffer
+   * @param filename - Original filename
+   * @returns Promise<string> - Extracted text
+   */
+  private static async extractTextFromImageBuffer(buffer: Buffer, filename: string): Promise<string> {
+    try {
+      const result = await ImageProcessorService.processImageBuffer(buffer, filename);
+      return result.text;
+    } catch (error) {
+      console.error('Error extracting text from image buffer:', error);
+      throw new Error(`Failed to extract text from image buffer: ${error instanceof Error ? error.message : 'Unknown error'}`);
     }
   }
 
@@ -220,7 +305,33 @@ export class TextExtractorService {
       throw new Error(`Failed to extract text from TXT buffer: ${error instanceof Error ? error.message : 'Unknown error'}`);
     }
   }
-}
 
+  /**
+   * Get supported file types
+   * @returns string[] - Array of supported file extensions
+   */
+  public static getSupportedFileTypes(): string[] {
+    return ['.pdf', '.docx', '.txt', '.csv', '.jpg', '.jpeg', '.png', '.bmp', '.tiff', '.webp'];
+  }
+
+  /**
+   * Get supported MIME types
+   * @returns string[] - Array of supported MIME types
+   */
+  public static getSupportedMimeTypes(): string[] {
+    return [
+      'application/pdf',
+      'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
+      'text/plain',
+      'text/csv',
+      'image/jpeg',
+      'image/jpg',
+      'image/png',
+      'image/bmp',
+      'image/tiff',
+      'image/webp'
+    ];
+  }
+}
 
 export default TextExtractorService;
