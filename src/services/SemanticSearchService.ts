@@ -89,6 +89,7 @@ export class SemanticSearchService {
               _id: 1,
               filename: 1,
               originalname: 1,
+              size: 1,
               isPublic: 1,
               r2Url: 1,
               path: 1,
@@ -109,6 +110,7 @@ export class SemanticSearchService {
           fileId: file._id.toString(),
           filename: file.filename,
           originalname: file.originalname,
+          size: file.size,
           url: file.r2Url || file.path,
           relevanceScore: file.score,
           isPublic: file.isPublic,
@@ -163,6 +165,7 @@ export class SemanticSearchService {
           fileId: file._id.toString(),
           filename: file.filename,
           originalname: file.originalname,
+          size: file.size,
           url: file.r2Url || file.path,
           relevanceScore: 1.0, // Default score for text search results
           isPublic: file.isPublic,
