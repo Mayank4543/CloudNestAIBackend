@@ -55,29 +55,29 @@ export class SemanticSearchService {
       // Set default limit if not provided
       const limit = options.limit || 10;
 
+      // Prepare resources reused across strategies
+      // Generate embedding for the search query once so all strategies can reuse it
+      const queryEmbedding = await EmbeddingService.generateEmbedding(query);
+
+      // For vector search, we need files with embeddings
+      const vectorFilter = {
+        ...baseFilter,
+        embedding: { $exists: true }
+      };
+
       try {
-        // First try semantic search with vector embeddings
-        console.log(`Attempting semantic search for query: "${query}"`);
+        // First try Atlas Search with your existing embeddingVectorIndex
+        console.log(`Attempting Atlas Search with embeddingVectorIndex for query: "${query}"`);
 
-        // Generate embedding for the search query
-        const queryEmbedding = await EmbeddingService.generateEmbedding(query);
-
-        // For vector search, we need files with embeddings
-        const vectorFilter = {
-          ...baseFilter,
-          embedding: { $exists: true }
-        };
-
-        // Execute vector search using $vectorSearch operator
+        // Execute Atlas Search using $search.knnBeta with your existing index
         const results = await File.aggregate([
           {
             $search: {
-              vectorSearch: {
-                queryVector: queryEmbedding,
+              index: "embeddingVectorIndex", // Your existing Atlas Search index
+              knnBeta: {
+                vector: queryEmbedding,
                 path: "embedding",
-                numCandidates: 100,
-                limit: limit,
-                similarity: "cosine"
+                k: limit
               }
             }
           },
@@ -115,9 +115,9 @@ export class SemanticSearchService {
           tags: file.tags || [],
           r2Url: file.r2Url
         }));
-      } catch (vectorSearchError) {
-        // If vector search fails, fall back to traditional text search
-        console.error('Vector search failed, falling back to text search:', vectorSearchError);
+      } catch (atlasSearchError) {
+        // If Atlas Search fails, fall back to traditional text search
+        console.error('Atlas Search failed, falling back to text search:', atlasSearchError);
 
         // Fallback to keyword search
         console.log(`Falling back to keyword search for query: "${query}"`);
