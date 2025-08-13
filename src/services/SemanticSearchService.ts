@@ -9,11 +9,21 @@ export interface SearchResult {
   fileId: string;
   filename: string;
   originalname: string;
+  mimetype: string;
+  size: number;
+  path: string;
+  userId: string;
   url: string;
   relevanceScore: number;
   isPublic: boolean;
   tags: string[];
+  createdAt: string;
+  updatedAt: string;
   r2Url?: string;
+  owner?: {
+    name: string;
+    email: string;
+  };
 }
 
 /**
@@ -85,16 +95,38 @@ export class SemanticSearchService {
             $match: vectorFilter
           },
           {
+            $lookup: {
+              from: "users",
+              localField: "userId",
+              foreignField: "_id",
+              as: "owner"
+            }
+          },
+          {
+            $unwind: {
+              path: "$owner",
+              preserveNullAndEmptyArrays: true
+            }
+          },
+          {
             $project: {
               _id: 1,
               filename: 1,
               originalname: 1,
+              mimetype: 1,
               size: 1,
+              path: 1,
+              userId: 1,
               isPublic: 1,
               r2Url: 1,
-              path: 1,
               tags: 1,
-              score: { $meta: "searchScore" }
+              createdAt: 1,
+              updatedAt: 1,
+              score: { $meta: "searchScore" },
+              owner: {
+                name: 1,
+                email: 1
+              }
             }
           },
           {
@@ -110,12 +142,18 @@ export class SemanticSearchService {
           fileId: file._id.toString(),
           filename: file.filename,
           originalname: file.originalname,
+          mimetype: file.mimetype,
           size: file.size,
+          path: file.path,
+          userId: file.userId?.toString(),
           url: file.r2Url || file.path,
           relevanceScore: file.score,
           isPublic: file.isPublic,
           tags: file.tags || [],
-          r2Url: file.r2Url
+          createdAt: file.createdAt,
+          updatedAt: file.updatedAt,
+          r2Url: file.r2Url,
+          owner: file.owner
         }));
       } catch (atlasSearchError) {
         // If Atlas Search fails, fall back to traditional text search
@@ -156,6 +194,7 @@ export class SemanticSearchService {
 
         // Execute text search
         const results = await File.find(fullFilter)
+          .populate('userId', 'name email')
           .sort({ createdAt: -1 })
           .limit(limit)
           .lean();
@@ -165,12 +204,21 @@ export class SemanticSearchService {
           fileId: file._id.toString(),
           filename: file.filename,
           originalname: file.originalname,
+          mimetype: file.mimetype,
           size: file.size,
+          path: file.path,
+          userId: file.userId?._id?.toString() || file.userId?.toString() || '',
           url: file.r2Url || file.path,
           relevanceScore: 1.0, // Default score for text search results
           isPublic: file.isPublic,
           tags: file.tags || [],
-          r2Url: file.r2Url
+          createdAt: file.createdAt?.toISOString() || new Date().toISOString(),
+          updatedAt: (file as any).updatedAt?.toISOString() || file.createdAt?.toISOString() || new Date().toISOString(),
+          r2Url: file.r2Url,
+          owner: file.userId && typeof file.userId === 'object' && 'name' in file.userId ? {
+            name: (file.userId as any).name,
+            email: (file.userId as any).email
+          } : undefined
         }));
       }
     } catch (error) {
