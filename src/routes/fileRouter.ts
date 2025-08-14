@@ -150,7 +150,7 @@ fileRouter.get('/:id', authenticateToken, FileController.getFileById);
 fileRouter.delete('/:id', authenticateToken, FileController.deleteFile);
 fileRouter.put('/:id/tags', authenticateToken, FileController.updateFileTags);
 fileRouter.put('/:id/public', authenticateToken, FileController.updateFilePublicStatus);
-
+fileRouter.post('/test-ai-tagging', FileController.testAITagging);
 // Error handling middleware
 fileRouter.use((error: any, req: any, res: any, next: any) => {
     console.error('File route error:', error);

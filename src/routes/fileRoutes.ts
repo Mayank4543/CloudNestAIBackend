@@ -69,7 +69,7 @@ router.delete('/:id', FileController.deleteFile);
 
 // Update file tags (protected)
 router.put('/:id/tags', FileController.updateFileTags);
-
+router.post('/test-ai-tagging', FileController.testAITagging);
 // Update file public status (protected)
 router.put('/:id/public', FileController.updateFilePublicStatus);
 
