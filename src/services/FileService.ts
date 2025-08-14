@@ -6,6 +6,8 @@ import fs from 'fs';
 import path from 'path';
 import { SemanticFileService } from './SemanticFileService';
 import { EmbeddingService } from './EmbeddingService';
+import { AIService } from '../utils/ai';
+import { TextExtractorService } from './TextExtractorService';
 
 // Interface for file creation data
 export interface CreateFileData {
@@ -410,12 +412,68 @@ export class FileService {
         r2ObjectKey: r2ObjectKey || null // Always store R2 object key, null if not available
       });
 
+      // Extract text content for AI tagging (if supported file type)
+      let extractedText = '';
+      const supportedExtensions = ['.pdf', '.docx', '.txt', '.csv', '.jpg', '.jpeg', '.png', '.bmp', '.tiff', '.webp'];
+      const ext = path.extname(fileData.originalname).toLowerCase();
+
+      if (supportedExtensions.includes(ext)) {
+        try {
+          console.log(`Extracting text for AI tagging: ${fileData.originalname}`);
+
+          // Extract text using the TextExtractorService
+          if (fileData.buffer) {
+            extractedText = await TextExtractorService.extractTextFromBuffer(
+              fileData.buffer,
+              fileData.mimetype,
+              fileData.originalname
+            );
+          } else if (localFilePath) {
+            extractedText = await TextExtractorService.extractTextFromFile(localFilePath);
+          }
+
+          console.log(`Extracted ${extractedText.length} characters for AI tagging`);
+
+          // Generate AI tags if text was extracted
+          if (extractedText && extractedText.trim().length > 0) {
+            try {
+              console.log(`Generating AI tags for: ${fileData.originalname}`);
+              const aiTaggingResult = await AIService.generateTags(extractedText, fileData.originalname);
+
+              if (aiTaggingResult.success && aiTaggingResult.tags.length > 0) {
+                // Combine user-provided tags with AI-generated tags
+                const allTags = [...cleanTags, ...aiTaggingResult.tags];
+                // Remove duplicates and update the file document
+                const uniqueTags = [...new Set(allTags)];
+                newFile.tags = uniqueTags;
+
+                console.log(`Generated ${aiTaggingResult.tags.length} AI tags:`, aiTaggingResult.tags);
+              } else {
+                console.warn(`AI tagging failed for ${fileData.originalname}:`, aiTaggingResult.error);
+              }
+            } catch (aiError) {
+              console.error(`Error generating AI tags for ${fileData.originalname}:`, aiError);
+              // Continue without AI tags - non-critical error
+            }
+          }
+
+          // Store extracted text for reference (optional)
+          if (extractedText) {
+            newFile.textContent = extractedText.substring(0, 1000); // Store first 1000 chars
+          }
+
+        } catch (extractionError) {
+          console.error(`Error extracting text for AI tagging: ${fileData.originalname}`, extractionError);
+          // Continue without AI tagging - non-critical error
+        }
+      }
+
       // Save the file
       const savedFile = await newFile.save();
 
       // Process file for semantic search if it's a supported type
-      const ext = path.extname(fileData.originalname).toLowerCase();
-      if (localFilePath && ['.pdf', '.docx', '.txt'].includes(ext)) {
+      const fileExt = path.extname(fileData.originalname).toLowerCase();
+      if (localFilePath && ['.pdf', '.docx', '.txt'].includes(fileExt)) {
         try {
           console.log(`Processing file for semantic search: ${savedFile._id}`);
 

@@ -751,4 +751,59 @@ export class FileController {
             });
         }
     }
+
+    /**
+     * Test AI tagging functionality
+     * @param req - Express request object
+     * @param res - Express response object
+     * @returns Promise<void>
+     */
+    public static async testAITagging(req: Request, res: Response): Promise<void> {
+        try {
+            // Check if user is authenticated
+            if (!req.user || !req.user._id) {
+                res.status(401).json({
+                    success: false,
+                    message: 'User authentication required'
+                });
+                return;
+            }
+
+            const { text, filename } = req.body;
+
+            if (!text || typeof text !== 'string') {
+                res.status(400).json({
+                    success: false,
+                    message: 'Text content is required'
+                });
+                return;
+            }
+
+            const filenameToUse = filename || 'test-document.txt';
+
+            // Import the AI service
+            const { AIService } = require('../utils/ai');
+
+            console.log(`Testing AI tagging for: ${filenameToUse}`);
+            const result = await AIService.generateTags(text, filenameToUse);
+
+            res.status(200).json({
+                success: true,
+                message: 'AI tagging test completed',
+                data: {
+                    originalText: text.substring(0, 200) + (text.length > 200 ? '...' : ''),
+                    filename: filenameToUse,
+                    aiTaggingResult: result
+                }
+            });
+
+        } catch (error) {
+            console.error('Error testing AI tagging:', error);
+            res.status(500).json({
+                success: false,
+                message: 'Error testing AI tagging',
+                error: error instanceof Error ? error.message : 'Unknown error'
+            });
+        }
+    }
 }
