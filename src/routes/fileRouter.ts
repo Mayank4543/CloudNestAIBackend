@@ -145,12 +145,15 @@ fileRouter.get('/stats', authenticateToken, FileController.getFileStats);
 // New dedicated endpoint for getting file info as JSON (never redirects)
 fileRouter.get('/:id/info', authenticateToken, FileController.getFileInfo);
 
+// Test AI tagging functionality (protected)
+fileRouter.post('/test-ai-tagging', authenticateToken, FileController.testAITagging);
+
 // Generic param routes MUST come last
 fileRouter.get('/:id', authenticateToken, FileController.getFileById);
 fileRouter.delete('/:id', authenticateToken, FileController.deleteFile);
 fileRouter.put('/:id/tags', authenticateToken, FileController.updateFileTags);
 fileRouter.put('/:id/public', authenticateToken, FileController.updateFilePublicStatus);
-fileRouter.post('/test-ai-tagging', FileController.testAITagging);
+
 // Error handling middleware
 fileRouter.use((error: any, req: any, res: any, next: any) => {
     console.error('File route error:', error);

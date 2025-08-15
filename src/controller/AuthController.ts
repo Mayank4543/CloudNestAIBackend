@@ -57,7 +57,7 @@ export class AuthController {
             name: user.name
         };
 
-        const secret = process.env.JWT_SECRET || 'fallback-secret-key';
+        const secret = process.env.JWT_SECRET || 'your-super-secret-jwt-key-change-this-in-production';
         const expiresIn = process.env.JWT_EXPIRES_IN || '7d';
 
 

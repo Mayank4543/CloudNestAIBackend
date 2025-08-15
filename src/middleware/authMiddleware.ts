@@ -43,7 +43,7 @@ export const authenticateToken = async (
         }
 
         // Verify JWT token
-        const secret = process.env.JWT_SECRET || 'fallback-secret-key';
+        const secret = process.env.JWT_SECRET || 'your-super-secret-jwt-key-change-this-in-production';
         const decoded = jwt.verify(token, secret) as JWTPayload;
 
         // Find user in database
@@ -111,7 +111,7 @@ export const optionalAuth = async (
         }
 
         // Verify JWT token
-        const secret = process.env.JWT_SECRET || 'fallback-secret-key';
+        const secret = process.env.JWT_SECRET || 'your-super-secret-jwt-key-change-this-in-production';
         const decoded = jwt.verify(token, secret) as JWTPayload;
 
         // Find user in database

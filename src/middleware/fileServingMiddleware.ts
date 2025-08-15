@@ -64,7 +64,7 @@ export const serveUploadedFile = async (req: Request, res: Response, next: NextF
         // Verify JWT token
         let userId: string;
         try {
-            const decoded = jwt.verify(token, process.env.JWT_SECRET || 'fallback-secret-key') as any;
+            const decoded = jwt.verify(token, process.env.JWT_SECRET || 'your-super-secret-jwt-key-change-this-in-production') as any;
             userId = decoded.userId;
         } catch (jwtError) {
             console.log(`❌ Invalid token for private file: ${filename}`);

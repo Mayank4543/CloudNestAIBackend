@@ -66,7 +66,7 @@ export const proxyR2File = async (req: Request, res: Response, next: NextFunctio
         // If token exists, try to decode it to get userId
         if (token) {
             try {
-                const decoded = jwt.verify(token, process.env.JWT_SECRET || 'fallback-secret-key') as any;
+                const decoded = jwt.verify(token, process.env.JWT_SECRET || 'your-super-secret-jwt-key-change-this-in-production') as any;
                 userId = decoded.userId;
                 console.log(`R2 Proxy: Authenticated user ${userId}`);
             } catch (tokenError) {
