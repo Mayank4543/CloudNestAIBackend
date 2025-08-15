@@ -30,11 +30,14 @@ export const authenticateToken = async (
     try {
         // Get token from Authorization header
         const authHeader = req.headers.authorization;
+        console.log('🔍 Auth header received:', authHeader ? 'Present' : 'Missing');
+        
         const token = authHeader && authHeader.startsWith('Bearer ')
             ? authHeader.substring(7) // Remove "Bearer " prefix
             : null;
 
         if (!token) {
+            console.log('❌ No token provided');
             res.status(401).json({
                 success: false,
                 message: 'Access token is required'
@@ -42,12 +45,19 @@ export const authenticateToken = async (
             return;
         }
 
+        console.log('🔑 Token extracted, length:', token.length);
+
         // Verify JWT token
-        const secret = process.env.JWT_SECRET || 'your-super-secret-jwt-key-change-this-in-production';
+        const secret = process.env.JWT_SECRET || 'fallback-secret-key';
+        console.log('🔐 Using JWT secret:', secret.substring(0, 10) + '...');
+        
         const decoded = jwt.verify(token, secret) as JWTPayload;
+        console.log('✅ Token decoded successfully, userId:', decoded.userId);
 
         // Find user in database
         const user = await User.findById(decoded.userId);
+        console.log('👤 User lookup result:', user ? `Found user: ${user.email}` : 'User not found');
+        
         if (!user) {
             res.status(401).json({
                 success: false,
@@ -55,6 +65,9 @@ export const authenticateToken = async (
             });
             return;
         }
+
+        console.log('🎯 User attached to request. User ID:', user._id);
+        console.log('📋 User object keys:', Object.keys(user.toObject()));
 
         // Attach user to request object
         req.user = user;
@@ -111,7 +124,7 @@ export const optionalAuth = async (
         }
 
         // Verify JWT token
-        const secret = process.env.JWT_SECRET || 'your-super-secret-jwt-key-change-this-in-production';
+        const secret = process.env.JWT_SECRET || 'fallback-secret-key';
         const decoded = jwt.verify(token, secret) as JWTPayload;
 
         // Find user in database

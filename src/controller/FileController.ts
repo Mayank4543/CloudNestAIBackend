@@ -760,14 +760,27 @@ export class FileController {
      */
     public static async testAITagging(req: Request, res: Response): Promise<void> {
         try {
+            console.log('🧪 testAITagging called');
+            console.log('👤 req.user exists:', !!req.user);
+            console.log('🆔 req.user._id exists:', req.user ? !!req.user._id : 'req.user is null/undefined');
+            
+            if (req.user) {
+                console.log('📋 req.user keys:', Object.keys(req.user.toObject ? req.user.toObject() : req.user));
+                console.log('🔍 req.user._id type:', typeof req.user._id);
+                console.log('🔍 req.user._id value:', req.user._id);
+            }
+
             // Check if user is authenticated
             if (!req.user || !req.user._id) {
+                console.log('❌ Authentication check failed');
                 res.status(401).json({
                     success: false,
                     message: 'User authentication required'
                 });
                 return;
             }
+
+            console.log('✅ Authentication check passed');
 
             const { text, filename } = req.body;
 
