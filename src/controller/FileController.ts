@@ -954,34 +954,73 @@ export class FileController {
             // Import the AI service and generate summary
             const { AIService } = require('../utils/ai');
             
-            // Create a summary prompt
-            const summaryPrompt = `Please provide a comprehensive summary of the following document content. Focus on the main points, key findings, and important details:\n\n${textContent}`;
+            console.log(`🤖 Generating AI summary for file: ${file.originalname}`);
             
-            const result = await AIService.generateTags(summaryPrompt, `Summary of ${file.originalname}`);
+            // Create a comprehensive summary prompt for detailed analysis
+            const summaryPrompt = `Please provide a comprehensive and detailed summary of the following document. The summary should be well-structured with multiple paragraphs and include:
 
-            if (!result.success) {
+1. **Document Overview**: Brief introduction of what this document is about
+2. **Main Content**: Key points, important findings, and primary topics covered
+3. **Key Details**: Specific information, data, statistics, or important facts mentioned
+4. **Conclusions**: Any conclusions, recommendations, or final thoughts presented
+5. **Context**: The purpose, audience, or significance of this document
+
+Please write the summary in a professional, clear, and organized manner with proper paragraphs. Aim for approximately 200-400 words to provide sufficient detail while remaining concise.
+
+Document Content:
+${textContent.substring(0, 8000)}${textContent.length > 8000 ? '\n\n[Content truncated for processing...]' : ''}`;
+            
+            try {
+                // Use the AI service to generate a detailed summary
+                const result = await AIService.generateTags(summaryPrompt, `Detailed summary for: ${file.originalname}`);
+
+                if (!result.success) {
+                    res.status(500).json({
+                        success: false,
+                        message: 'Failed to generate summary with AI service',
+                        error: result.error
+                    });
+                    return;
+                }
+
+                // Process the AI response to create a proper summary
+                let summary = '';
+                if (result.tags && result.tags.length > 0) {
+                    // If the AI returns multiple parts, join them properly
+                    summary = result.tags.join('\n\n');
+                } else {
+                    summary = 'Unable to generate a comprehensive summary at this time.';
+                }
+
+                // Clean up the summary format
+                summary = summary
+                    .replace(/^\s*[\*\-\d\.]\s*/gm, '') // Remove bullet points or numbers
+                    .replace(/\n{3,}/g, '\n\n') // Normalize line breaks
+                    .trim();
+
+                console.log(`✅ Generated summary with ${summary.length} characters`);
+
+                res.status(200).json({
+                    success: true,
+                    message: 'File summary generated successfully',
+                    data: {
+                        fileId: file._id,
+                        filename: file.originalname,
+                        summary: summary,
+                        textLength: textContent.length,
+                        generatedAt: new Date().toISOString()
+                    }
+                });
+
+            } catch (aiError) {
+                console.error('AI summary generation error:', aiError);
                 res.status(500).json({
                     success: false,
-                    message: 'Failed to generate summary',
-                    error: result.error
+                    message: 'Failed to generate summary due to AI service error',
+                    error: aiError instanceof Error ? aiError.message : 'Unknown AI error'
                 });
                 return;
             }
-
-            // The AI service returns tags, but we'll use it for summary generation
-            // Extract the summary from the AI response
-            const summary = result.tags.join('\n\n');
-
-            res.status(200).json({
-                success: true,
-                message: 'File summary generated successfully',
-                data: {
-                    fileId: file._id,
-                    filename: file.originalname,
-                    summary: summary,
-                    textContent: textContent.substring(0, 500) + (textContent.length > 500 ? '...' : '')
-                }
-            });
 
         } catch (error) {
             console.error('Error summarizing file:', error);
