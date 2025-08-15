@@ -147,7 +147,8 @@ fileRouter.get('/:id/info', authenticateToken, FileController.getFileInfo);
 
 // Test AI tagging functionality (protected)
 fileRouter.post('/test-ai-tagging', authenticateToken, FileController.testAITagging);
-
+// Summarize file content using AI (protected)
+fileRouter.post('/:id/summarize', authenticateToken, FileController.summarizeFile);
 // Generic param routes MUST come last
 fileRouter.get('/:id', authenticateToken, FileController.getFileById);
 fileRouter.delete('/:id', authenticateToken, FileController.deleteFile);

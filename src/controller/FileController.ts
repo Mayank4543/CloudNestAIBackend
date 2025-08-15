@@ -763,7 +763,7 @@ export class FileController {
             console.log('🧪 testAITagging called');
             console.log('👤 req.user exists:', !!req.user);
             console.log('🆔 req.user._id exists:', req.user ? !!req.user._id : 'req.user is null/undefined');
-            
+
             if (req.user) {
                 console.log('📋 req.user keys:', Object.keys(req.user.toObject ? req.user.toObject() : req.user));
                 console.log('🔍 req.user._id type:', typeof req.user._id);
@@ -815,6 +815,113 @@ export class FileController {
             res.status(500).json({
                 success: false,
                 message: 'Error testing AI tagging',
+                error: error instanceof Error ? error.message : 'Unknown error'
+            });
+        }
+    }
+
+    /**
+     * Summarize file content using AI
+     */
+    public static async summarizeFile(req: Request, res: Response): Promise<void> {
+        try {
+            // Check if user is authenticated
+            if (!req.user || !req.user._id) {
+                res.status(401).json({
+                    success: false,
+                    message: 'User authentication required'
+                });
+                return;
+            }
+
+            const { id: fileId } = req.params;
+
+            if (!fileId) {
+                res.status(400).json({
+                    success: false,
+                    message: 'File ID is required'
+                });
+                return;
+            }
+
+            console.log(`Summarizing file: ${fileId}`);
+
+            // Get the file details first
+            const file = await FileService.getFileById(fileId, req.user._id.toString());
+
+            if (!file) {
+                res.status(404).json({
+                    success: false,
+                    message: 'File not found'
+                });
+                return;
+            }
+
+            // Extract text content from the file
+            const { TextExtractorService } = require('../services/TextExtractorService');
+            let textContent = '';
+
+            try {
+                // Extract text using the file path
+                textContent = await TextExtractorService.extractText({
+                    filePath: file.path,
+                    filename: file.originalname,
+                    mimetype: file.mimetype
+                });
+
+                if (!textContent || textContent.trim().length === 0) {
+                    res.status(400).json({
+                        success: false,
+                        message: 'No text content could be extracted from this file'
+                    });
+                    return;
+                }
+            } catch (extractError) {
+                console.error('Text extraction error:', extractError);
+                res.status(400).json({
+                    success: false,
+                    message: 'Unable to extract text from this file type'
+                });
+                return;
+            }
+
+            // Import the AI service and generate summary
+            const { AIService } = require('../utils/ai');
+            
+            // Create a summary prompt
+            const summaryPrompt = `Please provide a comprehensive summary of the following document content. Focus on the main points, key findings, and important details:\n\n${textContent}`;
+            
+            const result = await AIService.generateTags(summaryPrompt, `Summary of ${file.originalname}`);
+
+            if (!result.success) {
+                res.status(500).json({
+                    success: false,
+                    message: 'Failed to generate summary',
+                    error: result.error
+                });
+                return;
+            }
+
+            // The AI service returns tags, but we'll use it for summary generation
+            // Extract the summary from the AI response
+            const summary = result.tags.join('\n\n');
+
+            res.status(200).json({
+                success: true,
+                message: 'File summary generated successfully',
+                data: {
+                    fileId: file._id,
+                    filename: file.originalname,
+                    summary: summary,
+                    textContent: textContent.substring(0, 500) + (textContent.length > 500 ? '...' : '')
+                }
+            });
+
+        } catch (error) {
+            console.error('Error summarizing file:', error);
+            res.status(500).json({
+                success: false,
+                message: 'Error generating file summary',
                 error: error instanceof Error ? error.message : 'Unknown error'
             });
         }
