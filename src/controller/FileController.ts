@@ -857,17 +857,83 @@ export class FileController {
                 return;
             }
 
+            console.log(`📋 File details:`, {
+                filename: file.filename,
+                originalname: file.originalname,
+                mimetype: file.mimetype,
+                size: file.size,
+                path: file.path,
+                r2Url: file.r2Url,
+                r2ObjectKey: file.r2ObjectKey
+            });
+
+            // Check if file type is supported for text extraction
+            const path = require('path');
+            const supportedExtensions = ['.pdf', '.docx', '.txt', '.csv', '.jpg', '.jpeg', '.png', '.bmp', '.tiff', '.webp'];
+            const fileExtension = path.extname(file.originalname).toLowerCase();
+            
+            console.log(`🔍 File extension: ${fileExtension}`);
+            console.log(`📝 Supported extensions:`, supportedExtensions);
+
+            if (!supportedExtensions.includes(fileExtension)) {
+                res.status(400).json({
+                    success: false,
+                    message: `File type "${fileExtension}" is not supported for text extraction. Supported types: ${supportedExtensions.join(', ')}`
+                });
+                return;
+            }
+
             // Extract text content from the file
             const { TextExtractorService } = require('../services/TextExtractorService');
             let textContent = '';
 
             try {
-                // Extract text using the file path
-                textContent = await TextExtractorService.extractText({
-                    filePath: file.path,
-                    filename: file.originalname,
-                    mimetype: file.mimetype
-                });
+                console.log(`🔄 Attempting to extract text from file...`);
+                
+                // If file is stored in R2, we need to download it first
+                if (file.r2Url && file.r2ObjectKey) {
+                    console.log(`☁️ File is stored in R2, downloading first...`);
+                    
+                    // Download file from R2 to buffer
+                    const fileBuffer = await FileService.downloadFileFromR2(file.r2ObjectKey);
+                    
+                    // Extract text using buffer
+                    textContent = await TextExtractorService.extractText({
+                        buffer: fileBuffer,
+                        filename: file.originalname,
+                        mimetype: file.mimetype
+                    });
+                } else if (file.path) {
+                    console.log(`💾 File is stored locally, using path: ${file.path}`);
+                    
+                    // Check if file exists at the specified path
+                    const fs = require('fs');
+                    if (!fs.existsSync(file.path)) {
+                        console.log(`❌ File does not exist at path: ${file.path}`);
+                        res.status(400).json({
+                            success: false,
+                            message: 'File not found on server storage'
+                        });
+                        return;
+                    }
+
+                    // Extract text using the file path
+                    textContent = await TextExtractorService.extractText({
+                        filePath: file.path,
+                        filename: file.originalname,
+                        mimetype: file.mimetype
+                    });
+                } else {
+                    console.log(`❌ No valid file location found`);
+                    res.status(400).json({
+                        success: false,
+                        message: 'File location not found'
+                    });
+                    return;
+                }
+
+                console.log(`✅ Text extracted, length: ${textContent.length} characters`);
+                console.log(`📄 Text preview: ${textContent.substring(0, 200)}...`);
 
                 if (!textContent || textContent.trim().length === 0) {
                     res.status(400).json({
@@ -880,7 +946,7 @@ export class FileController {
                 console.error('Text extraction error:', extractError);
                 res.status(400).json({
                     success: false,
-                    message: 'Unable to extract text from this file type'
+                    message: `Unable to extract text from this file type: ${extractError instanceof Error ? extractError.message : 'Unknown error'}`
                 });
                 return;
             }

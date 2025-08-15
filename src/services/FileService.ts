@@ -301,6 +301,73 @@ export class FileService {
   }
 
   /**
+   * Download a file from Cloudflare R2 storage
+   * @param objectKey - The key (filename) of the object in R2
+   * @returns Promise<Buffer> - File content as buffer
+   */
+  public static async downloadFileFromR2(objectKey: string): Promise<Buffer> {
+    try {
+      if (!objectKey) {
+        throw new Error('Object key is required for downloading from R2');
+      }
+
+      console.log(`Downloading file from R2: ${objectKey}`);
+
+      const r2Client = this.getR2Client();
+      const bucketName = process.env.R2_BUCKET_NAME;
+
+      if (!bucketName) {
+        throw new Error('R2_BUCKET_NAME is not defined');
+      }
+
+      const command = new GetObjectCommand({
+        Bucket: bucketName,
+        Key: objectKey,
+      });
+
+      const result = await r2Client.send(command);
+      
+      if (!result.Body) {
+        throw new Error('No file data received from R2');
+      }
+
+      // Convert the stream to buffer
+      const chunks: Buffer[] = [];
+      const stream = result.Body as NodeJS.ReadableStream;
+
+      return new Promise((resolve, reject) => {
+        stream.on('data', (chunk: Buffer) => {
+          chunks.push(chunk);
+        });
+
+        stream.on('end', () => {
+          const buffer = Buffer.concat(chunks);
+          console.log(`Downloaded ${buffer.length} bytes from R2`);
+          resolve(buffer);
+        });
+
+        stream.on('error', (error) => {
+          console.error('Error reading stream from R2:', error);
+          reject(new Error(`Failed to read file stream: ${error.message}`));
+        });
+      });
+
+    } catch (error) {
+      console.error('Failed to download file from R2:', error);
+      
+      const errorMessage = error instanceof Error ? error.message : 'Unknown error';
+      
+      if (errorMessage.includes('NoSuchKey')) {
+        throw new Error(`File not found in R2 storage: ${objectKey}`);
+      } else if (errorMessage.includes('AccessDenied')) {
+        throw new Error('Access denied when downloading from R2. Please check permissions.');
+      } else {
+        throw new Error(`Failed to download file from R2: ${errorMessage}`);
+      }
+    }
+  }
+
+  /**
    * Save a new file document to the database
    * @param fileData - File data to save
    * @returns Promise<IFile> - Saved file document
@@ -1033,7 +1100,6 @@ export class FileService {
       } else {
         // FOR PRIVATE FILES: Always generate short-lived (1h) presigned URL (Google Drive exact feel)
 
-        // If we have r2ObjectKey, generate a short-lived presigned URL
         if (file.r2ObjectKey) {
           try {
             accessUrl = await this.generatePresignedUrl(file.r2ObjectKey, 3600); // 1 hour exactly
