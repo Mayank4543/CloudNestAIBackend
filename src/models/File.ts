@@ -15,6 +15,7 @@ export interface IFile extends Document {
     r2ObjectKey?: string; // Object key in R2 bucket
     embedding?: number[]; // Vector embedding for semantic search
     textContent?: string; // Extracted text content for reference (optional)
+    summary?: string; // AI-generated comprehensive summary (one page)
 }
 
 // Mongoose schema for uploaded files
@@ -82,6 +83,10 @@ const FileSchema: Schema = new Schema({
     },
     textContent: {
         type: String, // Extracted text content (optional, for debugging)
+        select: false // Don't include in normal queries unless explicitly requested
+    },
+    summary: {
+        type: String, // AI-generated comprehensive summary (one page)
         select: false // Don't include in normal queries unless explicitly requested
     }
 }, {

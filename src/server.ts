@@ -6,6 +6,7 @@ import path from 'path';
 import fileRouter from './routes/fileRouter';
 import authRoutes from './routes/authRoutes';
 import semanticSearchRoutes from './routes/semanticSearchRoutes';
+import summaryRoutes from './routes/summaryRoutes';
 import { getStaticServePath, ensureUploadDir } from './utils/uploadPaths';
 import { serveUploadedFile } from './middleware/fileServingMiddleware';
 import { EmbeddingService } from './services/EmbeddingService';
@@ -62,6 +63,7 @@ console.log(`🌐 Files accessible at: /uploads/<filename>`);
 app.use('/api/files', fileRouter);
 app.use('/api/auth', authRoutes);
 app.use('/api/semantic', semanticSearchRoutes);
+app.use('/api/summary', summaryRoutes);
 
 app.get('/health', (_req, res) => {
     res.status(200).json({ success: true, message: 'OK' });

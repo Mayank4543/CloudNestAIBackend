@@ -4,6 +4,7 @@ import { getFileUrl, extractFilename, getUploadDir } from '../utils/uploadPaths'
 import fs from 'fs';
 import path from 'path';
 import SemanticFileService, { FileMetadataWithEmbedding } from '../services/SemanticFileService';
+import { IFile } from '../models/File';
 // Controller for file operations
 import { Types } from 'mongoose';
 export class FileController {
@@ -98,7 +99,7 @@ export class FileController {
             };
 
             // Save file using service
-            const savedFile = await FileService.saveFile(fileData);
+            const savedFile: IFile = await FileService.saveFile(fileData);
 
             // Check if the file type is supported for text extraction
             const supportedMimetypes = [
@@ -120,26 +121,43 @@ export class FileController {
                     const { SemanticFileService } = require('../services/SemanticFileService');
 
                     // Process the file buffer directly for embedding generation
-                    console.log(`Processing file buffer for semantic search: ${savedFile._id}`);
+                    console.log(`Processing file buffer for semantic search: ${(savedFile as any)._id}`);
 
                     // Generate embedding asynchronously
                     SemanticFileService.processFileForEmbedding({
                         buffer: req.file.buffer,
                         mimetype: req.file.mimetype,
                         filename: req.file.originalname,
-                        fileId: savedFile._id
+                        fileId: (savedFile as any)._id
                     })
                         .then((metadata: FileMetadataWithEmbedding) => {
-                            console.log(`✅ Successfully generated embedding for file: ${savedFile._id}`);
+                            console.log(`✅ Successfully generated embedding for file: ${(savedFile as any)._id}`);
                             // Save the embedding and text preview to the file document
                             return SemanticFileService.saveFileMetadata(metadata);
                         })
                         .then(() => {
-                            console.log(`✅ Successfully saved embedding metadata for file: ${savedFile._id}`);
+                            console.log(`✅ Successfully saved embedding metadata for file: ${(savedFile as any)._id}`);
                         })
                         .catch((err: Error) => {
-                            console.error(`❌ Failed to process file ${savedFile._id} for semantic search:`, err);
+                            console.error(`❌ Failed to process file ${(savedFile as any)._id} for semantic search:`, err);
                         });
+
+                    // Also generate summary asynchronously
+                    const { SummaryService } = require('../services/SummaryService');
+                    console.log(`📋 Starting summary generation for file: ${(savedFile as any)._id}`);
+
+                    SummaryService.generateAndSaveSummary((savedFile as any)._id.toString(), req.user._id.toString())
+                        .then((summaryResult: any) => {
+                            if (summaryResult.success) {
+                                console.log(`✅ Successfully generated summary for file: ${(savedFile as any)._id}`);
+                            } else {
+                                console.error(`❌ Failed to generate summary for file ${(savedFile as any)._id}:`, summaryResult.error);
+                            }
+                        })
+                        .catch((err: Error) => {
+                            console.error(`❌ Failed to generate summary for file ${(savedFile as any)._id}:`, err);
+                        });
+
                 } catch (embeddingError) {
                     console.error('❌ Failed to generate embedding:', embeddingError);
                 }
@@ -147,7 +165,7 @@ export class FileController {
                 // Fallback to the path-based method if buffer isn't available
                 try {
                     const filePath = savedFile.path;
-                    const fileId = savedFile._id as Types.ObjectId;
+                    const fileId = (savedFile as any)._id as Types.ObjectId;
 
                     // Use the legacy method that expects a file path
                     const { SemanticFileService } = require('../services/SemanticFileService');
@@ -166,7 +184,7 @@ export class FileController {
                 success: true,
                 message: 'File uploaded successfully',
                 data: {
-                    id: savedFile._id,
+                    id: (savedFile as any)._id,
                     filename: savedFile.filename,
                     originalname: savedFile.originalname,
                     mimetype: savedFile.mimetype,
@@ -815,218 +833,6 @@ export class FileController {
             res.status(500).json({
                 success: false,
                 message: 'Error testing AI tagging',
-                error: error instanceof Error ? error.message : 'Unknown error'
-            });
-        }
-    }
-
-    /**
-     * Summarize file content using AI
-     */
-    public static async summarizeFile(req: Request, res: Response): Promise<void> {
-        try {
-            // Check if user is authenticated
-            if (!req.user || !req.user._id) {
-                res.status(401).json({
-                    success: false,
-                    message: 'User authentication required'
-                });
-                return;
-            }
-
-            const { id: fileId } = req.params;
-
-            if (!fileId) {
-                res.status(400).json({
-                    success: false,
-                    message: 'File ID is required'
-                });
-                return;
-            }
-
-            console.log(`Summarizing file: ${fileId}`);
-
-            // Get the file details first
-            const file = await FileService.getFileById(fileId, req.user._id.toString());
-
-            if (!file) {
-                res.status(404).json({
-                    success: false,
-                    message: 'File not found'
-                });
-                return;
-            }
-
-            console.log(`📋 File details:`, {
-                filename: file.filename,
-                originalname: file.originalname,
-                mimetype: file.mimetype,
-                size: file.size,
-                path: file.path,
-                r2Url: file.r2Url,
-                r2ObjectKey: file.r2ObjectKey
-            });
-
-            // Check if file type is supported for text extraction
-            const path = require('path');
-            const supportedExtensions = ['.pdf', '.docx', '.txt', '.csv', '.jpg', '.jpeg', '.png', '.bmp', '.tiff', '.webp'];
-            const fileExtension = path.extname(file.originalname).toLowerCase();
-            
-            console.log(`🔍 File extension: ${fileExtension}`);
-            console.log(`📝 Supported extensions:`, supportedExtensions);
-
-            if (!supportedExtensions.includes(fileExtension)) {
-                res.status(400).json({
-                    success: false,
-                    message: `File type "${fileExtension}" is not supported for text extraction. Supported types: ${supportedExtensions.join(', ')}`
-                });
-                return;
-            }
-
-            // Extract text content from the file
-            const { TextExtractorService } = require('../services/TextExtractorService');
-            let textContent = '';
-
-            try {
-                console.log(`🔄 Attempting to extract text from file...`);
-                
-                // If file is stored in R2, we need to download it first
-                if (file.r2Url && file.r2ObjectKey) {
-                    console.log(`☁️ File is stored in R2, downloading first...`);
-                    
-                    // Download file from R2 to buffer
-                    const fileBuffer = await FileService.downloadFileFromR2(file.r2ObjectKey);
-                    
-                    // Extract text using buffer
-                    textContent = await TextExtractorService.extractText({
-                        buffer: fileBuffer,
-                        filename: file.originalname,
-                        mimetype: file.mimetype
-                    });
-                } else if (file.path) {
-                    console.log(`💾 File is stored locally, using path: ${file.path}`);
-                    
-                    // Check if file exists at the specified path
-                    const fs = require('fs');
-                    if (!fs.existsSync(file.path)) {
-                        console.log(`❌ File does not exist at path: ${file.path}`);
-                        res.status(400).json({
-                            success: false,
-                            message: 'File not found on server storage'
-                        });
-                        return;
-                    }
-
-                    // Extract text using the file path
-                    textContent = await TextExtractorService.extractText({
-                        filePath: file.path,
-                        filename: file.originalname,
-                        mimetype: file.mimetype
-                    });
-                } else {
-                    console.log(`❌ No valid file location found`);
-                    res.status(400).json({
-                        success: false,
-                        message: 'File location not found'
-                    });
-                    return;
-                }
-
-                console.log(`✅ Text extracted, length: ${textContent.length} characters`);
-                console.log(`📄 Text preview: ${textContent.substring(0, 200)}...`);
-
-                if (!textContent || textContent.trim().length === 0) {
-                    res.status(400).json({
-                        success: false,
-                        message: 'No text content could be extracted from this file'
-                    });
-                    return;
-                }
-            } catch (extractError) {
-                console.error('Text extraction error:', extractError);
-                res.status(400).json({
-                    success: false,
-                    message: `Unable to extract text from this file type: ${extractError instanceof Error ? extractError.message : 'Unknown error'}`
-                });
-                return;
-            }
-
-            // Import the AI service and generate summary
-            const { AIService } = require('../utils/ai');
-            
-            console.log(`🤖 Generating AI summary for file: ${file.originalname}`);
-            
-            // Create a comprehensive summary prompt for detailed analysis
-            const summaryPrompt = `Please provide a comprehensive and detailed summary of the following document. The summary should be well-structured with multiple paragraphs and include:
-
-1. **Document Overview**: Brief introduction of what this document is about
-2. **Main Content**: Key points, important findings, and primary topics covered
-3. **Key Details**: Specific information, data, statistics, or important facts mentioned
-4. **Conclusions**: Any conclusions, recommendations, or final thoughts presented
-5. **Context**: The purpose, audience, or significance of this document
-
-Please write the summary in a professional, clear, and organized manner with proper paragraphs. Aim for approximately 200-400 words to provide sufficient detail while remaining concise.
-
-Document Content:
-${textContent.substring(0, 8000)}${textContent.length > 8000 ? '\n\n[Content truncated for processing...]' : ''}`;
-            
-            try {
-                // Use the AI service to generate a detailed summary
-                const result = await AIService.generateTags(summaryPrompt, `Detailed summary for: ${file.originalname}`);
-
-                if (!result.success) {
-                    res.status(500).json({
-                        success: false,
-                        message: 'Failed to generate summary with AI service',
-                        error: result.error
-                    });
-                    return;
-                }
-
-                // Process the AI response to create a proper summary
-                let summary = '';
-                if (result.tags && result.tags.length > 0) {
-                    // If the AI returns multiple parts, join them properly
-                    summary = result.tags.join('\n\n');
-                } else {
-                    summary = 'Unable to generate a comprehensive summary at this time.';
-                }
-
-                // Clean up the summary format
-                summary = summary
-                    .replace(/^\s*[\*\-\d\.]\s*/gm, '') // Remove bullet points or numbers
-                    .replace(/\n{3,}/g, '\n\n') // Normalize line breaks
-                    .trim();
-
-                console.log(`✅ Generated summary with ${summary.length} characters`);
-
-                res.status(200).json({
-                    success: true,
-                    message: 'File summary generated successfully',
-                    data: {
-                        fileId: file._id,
-                        filename: file.originalname,
-                        summary: summary,
-                        textLength: textContent.length,
-                        generatedAt: new Date().toISOString()
-                    }
-                });
-
-            } catch (aiError) {
-                console.error('AI summary generation error:', aiError);
-                res.status(500).json({
-                    success: false,
-                    message: 'Failed to generate summary due to AI service error',
-                    error: aiError instanceof Error ? aiError.message : 'Unknown AI error'
-                });
-                return;
-            }
-
-        } catch (error) {
-            console.error('Error summarizing file:', error);
-            res.status(500).json({
-                success: false,
-                message: 'Error generating file summary',
                 error: error instanceof Error ? error.message : 'Unknown error'
             });
         }
