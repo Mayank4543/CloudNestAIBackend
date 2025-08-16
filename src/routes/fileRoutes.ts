@@ -71,8 +71,8 @@ router.delete('/:id', FileController.deleteFile);
 router.put('/:id/tags', FileController.updateFileTags);
 router.post('/test-ai-tagging', FileController.testAITagging);
 // Summarize file content using AI (protected)
-router.post('/:id/summarize',  FileController.summarizeFile);
-// Update file public status (protected)
+// router.post('/:id/summarize',  FileController.summarizeFile);
+// // Update file public status (protected)
 router.put('/:id/public', FileController.updateFilePublicStatus);
 
 // Error handling middleware for multer
