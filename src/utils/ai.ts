@@ -247,23 +247,23 @@ export class AIService {
     private static createSummaryPrompt(textContent: string, filename: string): string {
         return `Please provide a comprehensive and well-structured summary of the following document. The summary should be organized into clear paragraphs and include:
 
-Document Overview: Brief introduction of what this document is about
-Main Content: Key points, important findings, and primary topics covered  
-Key Details: Specific information, data, statistics, or important facts mentioned
-Conclusions: Any conclusions, recommendations, or final thoughts presented
+ Document Overview: Brief introduction of what this document is about
+ Main Content: Key points, important findings, and primary topics covered  
+ Key Details: Specific information, data, statistics, or important facts mentioned
+ Conclusions: Any conclusions, recommendations, or final thoughts presented
 
-Requirements:
-- Write in professional, clear language
-- Use proper paragraph structure
-- Aim for 250-400 words for adequate detail
-- Focus on the most important and relevant information
-- Maintain objectivity and accuracy
+ Requirements:
+  - Write in professional, clear language
+  - Use proper paragraph structure
+  - Aim for 250-400 words for adequate detail
+  - Focus on the most important and relevant information
+  - Maintain objectivity and accuracy
 
-Document: ${filename}
-Content: ${textContent}
+ Document: ${filename}
+ Content: ${textContent}
 
-Summary:`;
-    }
+ Summary:`;
+ }
 
     /**
      * Create the tagging prompt
