@@ -326,7 +326,7 @@ export class FileService {
       });
 
       const result = await r2Client.send(command);
-      
+
       if (!result.Body) {
         throw new Error('No file data received from R2');
       }
@@ -354,9 +354,9 @@ export class FileService {
 
     } catch (error) {
       console.error('Failed to download file from R2:', error);
-      
+
       const errorMessage = error instanceof Error ? error.message : 'Unknown error';
-      
+
       if (errorMessage.includes('NoSuchKey')) {
         throw new Error(`File not found in R2 storage: ${objectKey}`);
       } else if (errorMessage.includes('AccessDenied')) {
@@ -621,14 +621,19 @@ export class FileService {
 
       // Filter by user ownership or public files
       if (options.isPublic === true) {
-        // Return only public files
+        // Return only public files that are not deleted
         filter.isPublic = true;
+        filter.isDeleted = { $ne: true };
       } else if (options.userId) {
-        // Return files owned by the specific user
+        // Return files owned by the specific user that are not deleted
         if (!Types.ObjectId.isValid(options.userId)) {
           throw new Error('Invalid user ID format');
         }
         filter.userId = new Types.ObjectId(options.userId);
+        filter.isDeleted = { $ne: true };
+      } else {
+        // Default: exclude deleted files
+        filter.isDeleted = { $ne: true };
       }
 
       // Filter by mimetype (case-insensitive partial match)
@@ -723,15 +728,18 @@ export class FileService {
 
       const filter: FilterQuery<IFile> = { _id: id };
 
-      // If userId is provided, check ownership or public access
+      // If userId is provided, check ownership or public access (exclude deleted files)
       if (userId) {
         if (!Types.ObjectId.isValid(userId)) {
           throw new Error('Invalid user ID format');
         }
         filter.$or = [
-          { userId: new Types.ObjectId(userId) },
-          { isPublic: true }
+          { userId: new Types.ObjectId(userId), isDeleted: { $ne: true } },
+          { isPublic: true, isDeleted: { $ne: true } }
         ];
+      } else {
+        // If no userId provided, only return non-deleted files
+        filter.isDeleted = { $ne: true };
       }
 
       const file = await File.findOne(filter).select('-__v').lean();
@@ -743,10 +751,10 @@ export class FileService {
   }
 
   /**
-   * Delete a file by its ID (with ownership validation)
+   * Move a file to trash (soft delete) by its ID (with ownership validation)
    * @param id - File ID (MongoDB ObjectId)
    * @param userId - User ID to validate ownership
-   * @returns Promise<IFile | null> - Deleted file document or null if not found
+   * @returns Promise<IFile | null> - Updated file document or null if not found
    */
   public static async deleteFileById(id: string, userId: string): Promise<IFile | null> {
     try {
@@ -759,16 +767,360 @@ export class FileService {
         throw new Error('Invalid user ID format');
       }
 
-      // Delete only if the user owns the file
+      // Get the file first to store original path
+      const file = await File.findOne({
+        _id: id,
+        userId: new Types.ObjectId(userId),
+        isDeleted: { $ne: true }
+      });
+
+      if (!file) {
+        return null;
+      }
+
+      // Soft delete: mark as deleted and set deletion timestamp
+      const updatedFile = await File.findOneAndUpdate(
+        {
+          _id: id,
+          userId: new Types.ObjectId(userId),
+          isDeleted: { $ne: true }
+        },
+        {
+          isDeleted: true,
+          deletedAt: new Date(),
+          originalPath: file.path // Store original path for restoration
+        },
+        { new: true }
+      ).select('-__v');
+
+      return updatedFile;
+
+    } catch (error) {
+      throw new Error(`Failed to delete file: ${error instanceof Error ? error.message : 'Unknown error'}`);
+    }
+  }
+
+  /**
+   * Get all files in trash for a specific user
+   * @param userId - User ID to get trash files for
+   * @param options - Query options for pagination
+   * @returns Promise<PaginatedFiles> - Paginated trash files
+   */
+  public static async getTrashFiles(userId: string, options: FileQueryOptions = {}): Promise<PaginatedFiles> {
+    try {
+      if (!Types.ObjectId.isValid(userId)) {
+        throw new Error('Invalid user ID format');
+      }
+
+      // Set default values
+      const page = Math.max(options.page || 1, 1);
+      const limit = Math.min(Math.max(options.limit || 10, 1), 100);
+      const sortBy = options.sortBy || 'deletedAt';
+      const sortOrder = options.sortOrder || 'desc';
+      const skip = (page - 1) * limit;
+
+      // Build filter for trash files
+      const filter: FilterQuery<IFile> = {
+        userId: new Types.ObjectId(userId),
+        isDeleted: true
+      };
+
+      // Filter by mimetype if provided
+      if (options.mimetype) {
+        filter.mimetype = { $regex: options.mimetype.trim(), $options: 'i' };
+      }
+
+      // Filter by search keyword
+      if (options.searchKeyword) {
+        const searchRegex = { $regex: options.searchKeyword.trim(), $options: 'i' };
+        filter.$or = [
+          { filename: searchRegex },
+          { originalname: searchRegex }
+        ];
+      }
+
+      // Build sort object
+      const sortObj: any = {};
+      sortObj[sortBy] = sortOrder === 'asc' ? 1 : -1;
+
+      try {
+        // Execute queries in parallel
+        const [files, totalCount] = await Promise.all([
+          File.find(filter)
+            .sort(sortObj)
+            .skip(skip)
+            .limit(limit)
+            .select('-__v')
+            .lean(),
+          File.countDocuments(filter)
+        ]);
+
+        const filesArray = Array.isArray(files) ? files : [];
+        const validTotalCount = typeof totalCount === 'number' ? totalCount : 0;
+        const totalPages = Math.ceil(validTotalCount / limit);
+
+        return {
+          files: filesArray as IFile[],
+          pagination: {
+            currentPage: page,
+            totalPages,
+            totalFiles: validTotalCount,
+            hasNextPage: page < totalPages,
+            hasPreviousPage: page > 1,
+            limit
+          }
+        };
+      } catch (dbError) {
+        console.error('Database query error:', dbError);
+        return {
+          files: [],
+          pagination: {
+            currentPage: page,
+            totalPages: 0,
+            totalFiles: 0,
+            hasNextPage: false,
+            hasPreviousPage: false,
+            limit
+          }
+        };
+      }
+
+    } catch (error) {
+      throw new Error(`Failed to get trash files: ${error instanceof Error ? error.message : 'Unknown error'}`);
+    }
+  }
+
+  /**
+   * Restore a file from trash (undo soft delete)
+   * @param id - File ID (MongoDB ObjectId)
+   * @param userId - User ID to validate ownership
+   * @returns Promise<IFile | null> - Restored file document or null if not found
+   */
+  public static async restoreFileFromTrash(id: string, userId: string): Promise<IFile | null> {
+    try {
+      // Validate ObjectId format
+      if (!Types.ObjectId.isValid(id)) {
+        throw new Error('Invalid file ID format');
+      }
+
+      if (!Types.ObjectId.isValid(userId)) {
+        throw new Error('Invalid user ID format');
+      }
+
+      // Restore the file by removing deletion markers
+      const restoredFile = await File.findOneAndUpdate(
+        {
+          _id: id,
+          userId: new Types.ObjectId(userId),
+          isDeleted: true
+        },
+        {
+          $unset: {
+            isDeleted: 1,
+            deletedAt: 1,
+            originalPath: 1
+          }
+        },
+        { new: true }
+      ).select('-__v');
+
+      return restoredFile;
+
+    } catch (error) {
+      throw new Error(`Failed to restore file: ${error instanceof Error ? error.message : 'Unknown error'}`);
+    }
+  }
+
+  /**
+   * Permanently delete a file from trash (hard delete)
+   * @param id - File ID (MongoDB ObjectId)
+   * @param userId - User ID to validate ownership
+   * @returns Promise<IFile | null> - Permanently deleted file document or null if not found
+   */
+  public static async permanentlyDeleteFile(id: string, userId: string): Promise<IFile | null> {
+    try {
+      // Validate ObjectId format
+      if (!Types.ObjectId.isValid(id)) {
+        throw new Error('Invalid file ID format');
+      }
+
+      if (!Types.ObjectId.isValid(userId)) {
+        throw new Error('Invalid user ID format');
+      }
+
+      // Get the file first to access R2 information for cleanup
+      const file = await File.findOne({
+        _id: id,
+        userId: new Types.ObjectId(userId),
+        isDeleted: true
+      });
+
+      if (!file) {
+        return null;
+      }
+
+      // TODO: Delete file from R2 storage if r2ObjectKey exists
+      // This would require implementing R2 delete functionality
+      if (file.r2ObjectKey) {
+        try {
+          // Future enhancement: Delete from R2
+          // await this.deleteFileFromR2(file.r2ObjectKey);
+          console.log(`TODO: Delete file from R2: ${file.r2ObjectKey}`);
+        } catch (r2Error) {
+          console.error('Failed to delete file from R2:', r2Error);
+          // Continue with database deletion even if R2 deletion fails
+        }
+      }
+
+      // Delete local file if it exists
+      if (file.path && require('fs').existsSync(file.path)) {
+        try {
+          require('fs').unlinkSync(file.path);
+          console.log(`Deleted local file: ${file.path}`);
+        } catch (fsError) {
+          console.error('Failed to delete local file:', fsError);
+          // Continue with database deletion even if file deletion fails
+        }
+      }
+
+      // Permanently delete from database
       const deletedFile = await File.findOneAndDelete({
         _id: id,
-        userId: new Types.ObjectId(userId)
+        userId: new Types.ObjectId(userId),
+        isDeleted: true
       }).select('-__v');
 
       return deletedFile;
 
     } catch (error) {
-      throw new Error(`Failed to delete file: ${error instanceof Error ? error.message : 'Unknown error'}`);
+      throw new Error(`Failed to permanently delete file: ${error instanceof Error ? error.message : 'Unknown error'}`);
+    }
+  }
+
+  /**
+   * Empty trash for a specific user (permanently delete all files in trash)
+   * @param userId - User ID to empty trash for
+   * @returns Promise<{deletedCount: number, errors: string[]}> - Number of files deleted and any errors
+   */
+  public static async emptyTrash(userId: string): Promise<{ deletedCount: number, errors: string[] }> {
+    try {
+      if (!Types.ObjectId.isValid(userId)) {
+        throw new Error('Invalid user ID format');
+      }
+
+      // Get all files in trash for this user
+      const trashFiles = await File.find({
+        userId: new Types.ObjectId(userId),
+        isDeleted: true
+      }).select('_id path r2ObjectKey');
+
+      const errors: string[] = [];
+      let deletedCount = 0;
+
+      // Delete each file
+      for (const file of trashFiles) {
+        try {
+          // TODO: Delete from R2 if r2ObjectKey exists
+          if (file.r2ObjectKey) {
+            try {
+              // Future enhancement: Delete from R2
+              // await this.deleteFileFromR2(file.r2ObjectKey);
+              console.log(`TODO: Delete file from R2: ${file.r2ObjectKey}`);
+            } catch (r2Error) {
+              console.error(`Failed to delete file ${file._id} from R2:`, r2Error);
+              errors.push(`Failed to delete file ${file._id} from R2: ${r2Error instanceof Error ? r2Error.message : 'Unknown error'}`);
+            }
+          }
+
+          // Delete local file if it exists
+          if (file.path && require('fs').existsSync(file.path)) {
+            try {
+              require('fs').unlinkSync(file.path);
+              console.log(`Deleted local file: ${file.path}`);
+            } catch (fsError) {
+              console.error(`Failed to delete local file ${file.path}:`, fsError);
+              errors.push(`Failed to delete local file ${file.path}: ${fsError instanceof Error ? fsError.message : 'Unknown error'}`);
+            }
+          }
+
+          // Delete from database
+          await File.findByIdAndDelete(file._id);
+          deletedCount++;
+
+        } catch (fileError) {
+          console.error(`Failed to delete file ${file._id}:`, fileError);
+          errors.push(`Failed to delete file ${file._id}: ${fileError instanceof Error ? fileError.message : 'Unknown error'}`);
+        }
+      }
+
+      return { deletedCount, errors };
+
+    } catch (error) {
+      throw new Error(`Failed to empty trash: ${error instanceof Error ? error.message : 'Unknown error'}`);
+    }
+  }
+
+  /**
+   * Clean up old trash files (files that have been in trash for more than 30 days)
+   * This method should be called by a scheduled job
+   * @returns Promise<{deletedCount: number, errors: string[]}> - Number of files deleted and any errors
+   */
+  public static async cleanupOldTrashFiles(): Promise<{ deletedCount: number, errors: string[] }> {
+    try {
+      // Calculate the cutoff date (30 days ago)
+      const thirtyDaysAgo = new Date();
+      thirtyDaysAgo.setDate(thirtyDaysAgo.getDate() - 30);
+
+      // Find files that have been in trash for more than 30 days
+      const oldTrashFiles = await File.find({
+        isDeleted: true,
+        deletedAt: { $lt: thirtyDaysAgo }
+      }).select('_id path r2ObjectKey userId');
+
+      const errors: string[] = [];
+      let deletedCount = 0;
+
+      // Delete each old file
+      for (const file of oldTrashFiles) {
+        try {
+          // TODO: Delete from R2 if r2ObjectKey exists
+          if (file.r2ObjectKey) {
+            try {
+              // Future enhancement: Delete from R2
+              // await this.deleteFileFromR2(file.r2ObjectKey);
+              console.log(`TODO: Delete expired file from R2: ${file.r2ObjectKey}`);
+            } catch (r2Error) {
+              console.error(`Failed to delete expired file ${file._id} from R2:`, r2Error);
+              errors.push(`Failed to delete expired file ${file._id} from R2: ${r2Error instanceof Error ? r2Error.message : 'Unknown error'}`);
+            }
+          }
+
+          // Delete local file if it exists
+          if (file.path && require('fs').existsSync(file.path)) {
+            try {
+              require('fs').unlinkSync(file.path);
+              console.log(`Deleted expired local file: ${file.path}`);
+            } catch (fsError) {
+              console.error(`Failed to delete expired local file ${file.path}:`, fsError);
+              errors.push(`Failed to delete expired local file ${file.path}: ${fsError instanceof Error ? fsError.message : 'Unknown error'}`);
+            }
+          }
+
+          // Delete from database
+          await File.findByIdAndDelete(file._id);
+          deletedCount++;
+
+        } catch (fileError) {
+          console.error(`Failed to delete expired file ${file._id}:`, fileError);
+          errors.push(`Failed to delete expired file ${file._id}: ${fileError instanceof Error ? fileError.message : 'Unknown error'}`);
+        }
+      }
+
+      console.log(`Cleanup completed: ${deletedCount} expired files deleted, ${errors.length} errors`);
+      return { deletedCount, errors };
+
+    } catch (error) {
+      throw new Error(`Failed to cleanup old trash files: ${error instanceof Error ? error.message : 'Unknown error'}`);
     }
   }
 
@@ -799,9 +1151,13 @@ export class FileService {
         .filter(tag => typeof tag === 'string' && tag.trim().length > 0)
         .map(tag => tag.trim().toLowerCase());
 
-      // Update only if the user owns the file
+      // Update only if the user owns the file and it's not deleted
       const updatedFile = await File.findOneAndUpdate(
-        { _id: id, userId: new Types.ObjectId(userId) },
+        {
+          _id: id,
+          userId: new Types.ObjectId(userId),
+          isDeleted: { $ne: true }
+        },
         { tags: cleanTags },
         { new: true, runValidators: true }
       ).select('-__v');
@@ -831,9 +1187,13 @@ export class FileService {
         throw new Error('Invalid user ID format');
       }
 
-      // Update only if the user owns the file
+      // Update only if the user owns the file and it's not deleted
       const updatedFile = await File.findOneAndUpdate(
-        { _id: id, userId: new Types.ObjectId(userId) },
+        {
+          _id: id,
+          userId: new Types.ObjectId(userId),
+          isDeleted: { $ne: true }
+        },
         { isPublic: Boolean(isPublic) },
         { new: true, runValidators: true }
       ).select('-__v');
@@ -1055,8 +1415,11 @@ export class FileService {
    */
   public static async getFileAccessUrl(filename: string, userId?: string): Promise<{ url: string, isPublic: boolean, file: IFile }> {
     try {
-      // Find the file by filename
-      const filter: FilterQuery<IFile> = { filename };
+      // Find the file by filename (exclude deleted files)
+      const filter: FilterQuery<IFile> = {
+        filename,
+        isDeleted: { $ne: true }
+      };
 
       // Get the file first, without applying access filter
       // We'll handle access control logic explicitly

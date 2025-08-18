@@ -837,4 +837,231 @@ export class FileController {
             });
         }
     }
+
+    /**
+     * Get all files in trash for the authenticated user
+     * @param req - Express request object
+     * @param res - Express response object
+     * @returns Promise<void>
+     */
+    public static async getTrashFiles(req: Request, res: Response): Promise<void> {
+        try {
+            // Check if user is authenticated
+            if (!req.user || !req.user._id) {
+                res.status(401).json({
+                    success: false,
+                    message: 'User authentication required'
+                });
+                return;
+            }
+
+            // Extract query parameters for pagination
+            const page = parseInt(req.query.page as string) || 1;
+            const limit = parseInt(req.query.limit as string) || 10;
+            const mimetype = req.query.mimetype as string;
+            const sortBy = req.query.sortBy as string || 'deletedAt';
+            const sortOrder = req.query.sortOrder as 'asc' | 'desc' || 'desc';
+            const searchKeyword = req.query.q as string;
+
+            const queryOptions = {
+                page,
+                limit,
+                mimetype,
+                sortBy,
+                sortOrder,
+                searchKeyword
+            };
+
+            // Get trash files using service
+            const result = await FileService.getTrashFiles(req.user._id.toString(), queryOptions);
+
+            // Add URLs to trash files
+            const filesWithUrls = result.files.map((file: any) => {
+                try {
+                    // Use R2 URL if available, otherwise generate local URL
+                    if (file.r2Url) {
+                        return {
+                            ...file,
+                            url: file.r2Url,
+                            storedInR2: true
+                        };
+                    } else {
+                        const filename = extractFilename(file.path);
+                        return {
+                            ...file,
+                            url: getFileUrl(filename, req),
+                            storedInR2: false
+                        };
+                    }
+                } catch (err) {
+                    console.error('Error adding URL to trash file:', err);
+                    return file;
+                }
+            });
+
+            res.status(200).json({
+                success: true,
+                message: 'Trash files retrieved successfully',
+                data: filesWithUrls,
+                pagination: result.pagination
+            });
+
+        } catch (error) {
+            console.error('Error fetching trash files:', error);
+            res.status(500).json({
+                success: false,
+                message: 'Error fetching trash files',
+                error: error instanceof Error ? error.message : 'Unknown error'
+            });
+        }
+    }
+
+    /**
+     * Restore a file from trash
+     * @param req - Express request object
+     * @param res - Express response object
+     * @returns Promise<void>
+     */
+    public static async restoreFile(req: Request, res: Response): Promise<void> {
+        try {
+            const { id } = req.params;
+
+            // Check if user is authenticated
+            if (!req.user || !req.user._id) {
+                res.status(401).json({
+                    success: false,
+                    message: 'User authentication required'
+                });
+                return;
+            }
+
+            const restoredFile = await FileService.restoreFileFromTrash(id, req.user._id.toString());
+
+            if (!restoredFile) {
+                res.status(404).json({
+                    success: false,
+                    message: 'File not found in trash or access denied'
+                });
+                return;
+            }
+
+            // Add URL to restored file
+            let fileWithUrl;
+            if (restoredFile.r2Url) {
+                fileWithUrl = {
+                    ...restoredFile.toObject(),
+                    url: restoredFile.r2Url,
+                    storedInR2: true
+                };
+            } else {
+                const filename = extractFilename(restoredFile.path);
+                fileWithUrl = {
+                    ...restoredFile.toObject(),
+                    url: getFileUrl(filename, req),
+                    storedInR2: false
+                };
+            }
+
+            res.status(200).json({
+                success: true,
+                message: 'File restored successfully',
+                data: fileWithUrl
+            });
+
+        } catch (error) {
+            console.error('Error restoring file:', error);
+            res.status(500).json({
+                success: false,
+                message: 'Error restoring file',
+                error: error instanceof Error ? error.message : 'Unknown error'
+            });
+        }
+    }
+
+    /**
+     * Permanently delete a file from trash
+     * @param req - Express request object
+     * @param res - Express response object
+     * @returns Promise<void>
+     */
+    public static async permanentlyDeleteFile(req: Request, res: Response): Promise<void> {
+        try {
+            const { id } = req.params;
+
+            // Check if user is authenticated
+            if (!req.user || !req.user._id) {
+                res.status(401).json({
+                    success: false,
+                    message: 'User authentication required'
+                });
+                return;
+            }
+
+            const deletedFile = await FileService.permanentlyDeleteFile(id, req.user._id.toString());
+
+            if (!deletedFile) {
+                res.status(404).json({
+                    success: false,
+                    message: 'File not found in trash or access denied'
+                });
+                return;
+            }
+
+            res.status(200).json({
+                success: true,
+                message: 'File permanently deleted successfully',
+                data: {
+                    id: deletedFile._id,
+                    filename: deletedFile.filename,
+                    originalname: deletedFile.originalname
+                }
+            });
+
+        } catch (error) {
+            console.error('Error permanently deleting file:', error);
+            res.status(500).json({
+                success: false,
+                message: 'Error permanently deleting file',
+                error: error instanceof Error ? error.message : 'Unknown error'
+            });
+        }
+    }
+
+    /**
+     * Empty trash (permanently delete all files in trash)
+     * @param req - Express request object
+     * @param res - Express response object
+     * @returns Promise<void>
+     */
+    public static async emptyTrash(req: Request, res: Response): Promise<void> {
+        try {
+            // Check if user is authenticated
+            if (!req.user || !req.user._id) {
+                res.status(401).json({
+                    success: false,
+                    message: 'User authentication required'
+                });
+                return;
+            }
+
+            const result = await FileService.emptyTrash(req.user._id.toString());
+
+            res.status(200).json({
+                success: true,
+                message: `Trash emptied successfully. ${result.deletedCount} files permanently deleted.`,
+                data: {
+                    deletedCount: result.deletedCount,
+                    errors: result.errors
+                }
+            });
+
+        } catch (error) {
+            console.error('Error emptying trash:', error);
+            res.status(500).json({
+                success: false,
+                message: 'Error emptying trash',
+                error: error instanceof Error ? error.message : 'Unknown error'
+            });
+        }
+    }
 }

@@ -142,6 +142,32 @@ fileRouter.get('/', authenticateToken, FileController.getAllFiles);
 fileRouter.get('/search', authenticateToken, FileController.searchFiles);
 fileRouter.get('/stats', authenticateToken, FileController.getFileStats);
 
+// Trash operations (protected) - must be before /:id routes
+fileRouter.get('/trash', authenticateToken, FileController.getTrashFiles);
+fileRouter.put('/restore/:id', authenticateToken, FileController.restoreFile);
+fileRouter.delete('/permanent/:id', authenticateToken, FileController.permanentlyDeleteFile);
+fileRouter.delete('/trash/empty', authenticateToken, FileController.emptyTrash);
+
+// Manual trash cleanup endpoint (for testing/admin)
+fileRouter.post('/trash/cleanup', authenticateToken, async (req, res) => {
+    try {
+        const { TrashCleanupService } = require('../services/TrashCleanupService');
+        const result = await TrashCleanupService.manualCleanup();
+
+        res.status(200).json({
+            success: true,
+            message: `Manual cleanup completed: ${result.deletedCount} files deleted`,
+            data: result
+        });
+    } catch (error) {
+        res.status(500).json({
+            success: false,
+            message: 'Error during manual cleanup',
+            error: error instanceof Error ? error.message : 'Unknown error'
+        });
+    }
+});
+
 // New dedicated endpoint for getting file info as JSON (never redirects)
 fileRouter.get('/:id/info', authenticateToken, FileController.getFileInfo);
 

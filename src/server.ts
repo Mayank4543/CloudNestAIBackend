@@ -10,6 +10,7 @@ import summaryRoutes from './routes/summaryRoutes';
 import { getStaticServePath, ensureUploadDir } from './utils/uploadPaths';
 import { serveUploadedFile } from './middleware/fileServingMiddleware';
 import { EmbeddingService } from './services/EmbeddingService';
+import { TrashCleanupService } from './services/TrashCleanupService';
 
 dotenv.config();
 
@@ -95,6 +96,9 @@ const startServer = async () => {
             console.error('❌ Failed to initialize embedding model:', error);
             // Don't crash the server if model fails to load
         });
+
+        // Start the automatic trash cleanup scheduler
+        TrashCleanupService.startCleanupScheduler();
 
         app.listen(PORT, () => {
             console.log(`🚀 Server running on port ${PORT}`);

@@ -16,6 +16,9 @@ export interface IFile extends Document {
     embedding?: number[]; // Vector embedding for semantic search
     textContent?: string; // Extracted text content for reference (optional)
     summary?: string; // AI-generated comprehensive summary (one page)
+    isDeleted?: boolean; // Soft delete flag
+    deletedAt?: Date; // When the file was moved to trash
+    originalPath?: string; // Original path before deletion (for restoration)
 }
 
 // Mongoose schema for uploaded files
@@ -88,6 +91,20 @@ const FileSchema: Schema = new Schema({
     summary: {
         type: String, // AI-generated comprehensive summary (one page)
         select: false // Don't include in normal queries unless explicitly requested
+    },
+    isDeleted: {
+        type: Boolean,
+        default: false,
+        index: true // Index for faster queries
+    },
+    deletedAt: {
+        type: Date,
+        default: null,
+        index: true // Index for trash cleanup queries
+    },
+    originalPath: {
+        type: String, // Store original path for restoration
+        default: null
     }
 }, {
     timestamps: true, // This adds createdAt and updatedAt automatically
@@ -102,6 +119,9 @@ FileSchema.index({ tags: 1 });
 FileSchema.index({ userId: 1 });
 FileSchema.index({ isPublic: 1 });
 FileSchema.index({ userId: 1, isPublic: 1 });
+FileSchema.index({ isDeleted: 1 });
+FileSchema.index({ deletedAt: 1 });
+FileSchema.index({ userId: 1, isDeleted: 1 }); // For user's files and trash queries
 
 // Note: To create the vector index for embeddings, run this command in MongoDB Atlas:
 /*
