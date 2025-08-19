@@ -250,6 +250,8 @@ fileRouter.get('/:id/info', authenticateToken, FileController.getFileInfo);
 
 // Test AI tagging functionality (protected)
 fileRouter.post('/test-ai-tagging', authenticateToken, FileController.testAITagging);
+// Scan file for sensitive data before making public (protected)
+fileRouter.post('/:id/scan-sensitive', authenticateToken, FileController.scanForSensitiveData);
 // Summarize file content using AI (protected)
 // fileRouter.post('/:id/summarize', authenticateToken, FileController.summarizeFile);
 // Generic param routes MUST come last

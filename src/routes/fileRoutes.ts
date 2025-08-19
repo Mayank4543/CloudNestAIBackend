@@ -2,6 +2,7 @@ import express from 'express';
 import multer from 'multer';
 import path from 'path';
 import { FileController } from '../controller/FileController';
+import { authenticateToken } from '../middleware/authMiddleware';
 
 
 // Create router
@@ -50,30 +51,34 @@ import { proxyR2File } from '../middleware/r2ProxyMiddleware';
 router.get('/proxy/:filename', proxyR2File);
 
 // Handle file upload (protected)
-router.post('/upload', upload.single('file'), FileController.uploadFile);
+router.post('/upload', authenticateToken, upload.single('file'), FileController.uploadFile);
 
 // Get all files (protected)
-router.get('/', FileController.getAllFiles);
+router.get('/', authenticateToken, FileController.getAllFiles);
 
 // Search files (protected)
-router.get('/search', FileController.searchFiles);
+router.get('/search', authenticateToken, FileController.searchFiles);
 
 // Get file statistics (protected)
-router.get('/stats', FileController.getFileStats);
+router.get('/stats', authenticateToken, FileController.getFileStats);
+
+// Test AI tagging functionality (protected)
+router.post('/test-ai-tagging', authenticateToken, FileController.testAITagging);
+
+// Scan file for sensitive data before making public (protected)
+router.post('/:id/scan-sensitive', authenticateToken, FileController.scanForSensitiveData);
 
 // Get a specific file by ID (protected)
-router.get('/:id', FileController.getFileById);
+router.get('/:id', authenticateToken, FileController.getFileById);
 
 // Delete a file by ID (protected)
-router.delete('/:id', FileController.deleteFile);
+router.delete('/:id', authenticateToken, FileController.deleteFile);
 
 // Update file tags (protected)
-router.put('/:id/tags', FileController.updateFileTags);
-router.post('/test-ai-tagging', FileController.testAITagging);
-// Summarize file content using AI (protected)
-// router.post('/:id/summarize',  FileController.summarizeFile);
-// // Update file public status (protected)
-router.put('/:id/public', FileController.updateFilePublicStatus);
+router.put('/:id/tags', authenticateToken, FileController.updateFileTags);
+
+// Update file public status (protected)
+router.put('/:id/public', authenticateToken, FileController.updateFilePublicStatus);
 
 // Error handling middleware for multer
 router.use((error: any, req: express.Request, res: express.Response, next: express.NextFunction) => {

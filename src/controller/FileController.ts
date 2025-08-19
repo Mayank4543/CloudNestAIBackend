@@ -4,6 +4,7 @@ import { getFileUrl, extractFilename, getUploadDir } from '../utils/uploadPaths'
 import fs from 'fs';
 import path from 'path';
 import SemanticFileService, { FileMetadataWithEmbedding } from '../services/SemanticFileService';
+import { SensitiveDataScanService } from '../services/SensitiveDataScanService';
 import { IFile } from '../models/File';
 // Controller for file operations
 import { Types } from 'mongoose';
@@ -1069,6 +1070,168 @@ export class FileController {
             res.status(500).json({
                 success: false,
                 message: 'Error emptying trash',
+                error: error instanceof Error ? error.message : 'Unknown error'
+            });
+        }
+    }
+
+    /**
+     * Scan file for sensitive data before making it public
+     * @param req - Express request object with fileId param and optional text content
+     * @param res - Express response object
+     * @returns Promise<void>
+     */
+    public static async scanForSensitiveData(req: Request, res: Response): Promise<void> {
+        try {
+            const { id } = req.params;
+            const { textContent } = req.body;
+
+            // Check if user is authenticated
+            if (!req.user || !req.user._id) {
+                res.status(401).json({
+                    success: false,
+                    message: 'User authentication required'
+                });
+                return;
+            }
+
+            if (!id) {
+                res.status(400).json({
+                    success: false,
+                    message: 'File ID is required'
+                });
+                return;
+            }
+
+            // Get file information
+            const file = await FileService.getFileById(id, req.user._id.toString());
+            if (!file) {
+                res.status(404).json({
+                    success: false,
+                    message: 'File not found or access denied'
+                });
+                return;
+            }
+
+            let content = textContent;
+            let fileBuffer: Buffer | undefined;
+
+            // If no text content provided, try to extract it from the file
+            if (!content) {
+                try {
+                    if (file.path && fs.existsSync(file.path)) {
+                        // For images and text files, we'll use the new method that supports OCR
+                        if (file.mimetype?.includes('image/')) {
+                            // For images, we'll use the scanFileForSensitiveData method with OCR
+                            const scanResult = await SensitiveDataScanService.scanFileForSensitiveData(
+                                file.path,
+                                undefined,
+                                file.originalname,
+                                file.mimetype || ''
+                            );
+
+                            // Log scan result for monitoring
+                            console.log(`Sensitive data scan for image file ${id}:`, {
+                                containsSensitive: scanResult.containsSensitiveData,
+                                riskLevel: scanResult.riskLevel,
+                                types: scanResult.sensitiveDataTypes
+                            });
+
+                            res.status(200).json({
+                                success: true,
+                                message: 'File scanned successfully',
+                                data: {
+                                    fileId: file._id,
+                                    filename: file.originalname,
+                                    scanResult: {
+                                        containsSensitiveData: scanResult.containsSensitiveData,
+                                        riskLevel: scanResult.riskLevel,
+                                        confidence: scanResult.confidence,
+                                        sensitiveDataTypes: scanResult.sensitiveDataTypes,
+                                        details: scanResult.details,
+                                        recommendation: scanResult.containsSensitiveData
+                                            ? 'This file contains potentially sensitive information. Consider keeping it private.'
+                                            : 'No sensitive data detected. File appears safe to share publicly.'
+                                    }
+                                }
+                            });
+                            return;
+                        } else if (file.mimetype?.includes('text/') || file.mimetype?.includes('application/json')) {
+                            content = fs.readFileSync(file.path, 'utf8');
+                        } else {
+                            // For other files, we'll use filename and metadata for basic scan
+                            content = `${file.originalname} ${file.mimetype || ''} ${(file as any).tags?.join(' ') || ''}`;
+                        }
+                    } else if ((file as any).r2ObjectKey) {
+                        // For R2 stored files, check if we have buffer access for images
+                        if (file.mimetype?.includes('image/')) {
+                            // For R2 images, we need to download the file first
+                            // This is a limitation - for now, fall back to metadata scan
+                            console.warn('Image file stored in R2 - OCR not available, using metadata scan');
+                            content = `${file.originalname} ${file.mimetype || ''} ${(file as any).tags?.join(' ') || ''}`;
+                        } else {
+                            // For R2 stored files, we'll use metadata for basic scan
+                            content = `${file.originalname} ${file.mimetype || ''} ${(file as any).tags?.join(' ') || ''}`;
+                        }
+                    } else {
+                        res.status(400).json({
+                            success: false,
+                            message: 'Cannot extract text content from this file type. Please provide text content manually.'
+                        });
+                        return;
+                    }
+                } catch (extractError) {
+                    console.error('Error extracting file content:', extractError);
+                    // Use basic metadata for scan
+                    content = `${file.originalname} ${file.mimetype || ''} ${(file as any).tags?.join(' ') || ''}`;
+                }
+            }
+
+            if (!content || content.trim().length === 0) {
+                res.status(400).json({
+                    success: false,
+                    message: 'No content available for scanning'
+                });
+                return;
+            }
+
+            // Perform sensitive data scan for non-image files
+            const scanResult = await SensitiveDataScanService.scanForSensitiveData(
+                content,
+                file.originalname
+            );
+
+            // Log scan result for monitoring
+            console.log(`Sensitive data scan for file ${id}:`, {
+                containsSensitive: scanResult.containsSensitiveData,
+                riskLevel: scanResult.riskLevel,
+                types: scanResult.sensitiveDataTypes
+            });
+
+            res.status(200).json({
+                success: true,
+                message: 'File scanned successfully',
+                data: {
+                    fileId: file._id,
+                    filename: file.originalname,
+                    scanResult: {
+                        containsSensitiveData: scanResult.containsSensitiveData,
+                        riskLevel: scanResult.riskLevel,
+                        confidence: scanResult.confidence,
+                        sensitiveDataTypes: scanResult.sensitiveDataTypes,
+                        details: scanResult.details,
+                        recommendation: scanResult.containsSensitiveData
+                            ? 'This file contains potentially sensitive information. Consider keeping it private.'
+                            : 'No sensitive data detected. File appears safe to share publicly.'
+                    }
+                }
+            });
+
+        } catch (error) {
+            console.error('Error scanning file for sensitive data:', error);
+            res.status(500).json({
+                success: false,
+                message: 'Error scanning file for sensitive data',
                 error: error instanceof Error ? error.message : 'Unknown error'
             });
         }
