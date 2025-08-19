@@ -68,11 +68,12 @@ export class FileController {
                 return;
             }
 
-            // Extract tags and isPublic from request body (if provided)
+            // Extract tags, isPublic, and partition from request body (if provided)
             const tags: string[] = req.body.tags
                 ? (Array.isArray(req.body.tags) ? req.body.tags : [req.body.tags])
                 : [];
             const isPublic: boolean = req.body.isPublic === 'true' || req.body.isPublic === true;
+            const partition: string = req.body.partition || 'personal'; // Default to 'personal' partition
 
             // Generate a filename (since we're using memory storage)
             // Import the function from fileRouter or redeclare it here
@@ -94,6 +95,7 @@ export class FileController {
                 size: req.file.size,
                 buffer: req.file.buffer, // Use buffer instead of path
                 userId: req.user._id.toString(),
+                partition: partition, // Include partition
                 isPublic: isPublic,
                 tags: tags
             };
@@ -192,6 +194,7 @@ export class FileController {
                     path: savedFile.path,
                     url: fileUrl,
                     userId: savedFile.userId,
+                    partition: savedFile.partition, // Include partition in response
                     isPublic: savedFile.isPublic,
                     createdAt: savedFile.createdAt,
                     tags: savedFile.tags,
@@ -229,6 +232,7 @@ export class FileController {
             const limit = parseInt(req.query.limit as string) || 10;
             const mimetype = req.query.mimetype as string;
             const tags = req.query.tags as string;
+            const partition = req.query.partition as string; // Add partition filter
             const sortBy = req.query.sortBy as string;
             const sortOrder = req.query.sortOrder as 'asc' | 'desc';
             const isPublic = req.query.public === 'true';
@@ -242,6 +246,7 @@ export class FileController {
                 limit,
                 mimetype,
                 tags: tagArray,
+                partition,
                 sortBy,
                 sortOrder,
                 isPublic: true
@@ -250,6 +255,7 @@ export class FileController {
                 limit,
                 mimetype,
                 tags: tagArray,
+                partition,
                 sortBy,
                 sortOrder,
                 userId: req.user._id.toString()
@@ -612,6 +618,7 @@ export class FileController {
             const limit = parseInt(req.query.limit as string) || 10;
             const mimetype = req.query.mimetype as string;
             const tags = req.query.tags as string;
+            const partition = req.query.partition as string; // Add partition filter
             const sortBy = req.query.sortBy as string;
             const sortOrder = req.query.sortOrder as 'asc' | 'desc';
             const isPublic = req.query.public === 'true';
@@ -624,6 +631,7 @@ export class FileController {
                 limit,
                 mimetype,
                 tags: tagArray,
+                partition,
                 sortBy,
                 sortOrder,
                 isPublic: true
@@ -632,6 +640,7 @@ export class FileController {
                 limit,
                 mimetype,
                 tags: tagArray,
+                partition,
                 sortBy,
                 sortOrder,
                 userId: req.user._id.toString()

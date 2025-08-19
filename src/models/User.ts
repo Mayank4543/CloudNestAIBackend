@@ -2,6 +2,13 @@ import mongoose, { Document, Schema } from 'mongoose';
 import bcrypt from 'bcryptjs';
 import crypto from 'crypto';
 
+// Interface for storage partition
+export interface IStoragePartition {
+    name: string;
+    quota: number; // Maximum storage in bytes
+    used: number;  // Current usage in bytes
+}
+
 // Interface for User document
 export interface IUser extends Document {
     _id: mongoose.Types.ObjectId;
@@ -11,6 +18,7 @@ export interface IUser extends Document {
     picture?: string; // Profile picture URL for Google OAuth users
     passwordResetToken?: string;
     passwordResetExpires?: Date;
+    storagePartitions: IStoragePartition[]; // User storage partitions
     createdAt: Date;
     updatedAt: Date;
 
@@ -65,6 +73,33 @@ const UserSchema = new Schema<IUser>(
             type: Date,
             required: false,
             select: false // Don't include in queries by default
+        },
+        storagePartitions: {
+            type: [{
+                name: {
+                    type: String,
+                    required: true,
+                    trim: true,
+                    minlength: [1, 'Partition name must be at least 1 character long'],
+                    maxlength: [50, 'Partition name cannot exceed 50 characters']
+                },
+                quota: {
+                    type: Number,
+                    required: true,
+                    min: [0, 'Quota cannot be negative'],
+                    default: 5 * 1024 * 1024 * 1024 // 5GB default
+                },
+                used: {
+                    type: Number,
+                    required: true,
+                    min: [0, 'Used storage cannot be negative'],
+                    default: 0
+                }
+            }],
+            default: [
+                { name: 'personal', quota: 5 * 1024 * 1024 * 1024, used: 0 }, // 5GB
+                { name: 'work', quota: 5 * 1024 * 1024 * 1024, used: 0 }      // 5GB
+            ]
         }
     },
     {

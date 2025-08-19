@@ -5,9 +5,11 @@ import fs from 'fs';
 import jwt from 'jsonwebtoken';
 import { FileController } from '../controller/FileController';
 import { authenticateToken } from '../middleware/authMiddleware';
+import { checkQuota } from '../middleware/quotaMiddleware';
 import { getUploadDir, ensureUploadDir } from '../utils/uploadPaths';
 import File from '../models/File';
 import { FileService } from '../services/FileService';
+import { getFileUrl, extractFilename } from '../utils/uploadPaths';
 
 ensureUploadDir();
 
@@ -50,7 +52,7 @@ const upload = multer({
 });
 
 // Simple routes - specific paths first, param routes last
-fileRouter.post('/upload', authenticateToken, upload.single('file'), FileController.uploadFile);
+fileRouter.post('/upload', authenticateToken, upload.single('file'), checkQuota, FileController.uploadFile);
 fileRouter.get('/debug', FileController.getDebugInfo); // Debug endpoint
 
 // Import proxyR2File middleware and CORS configuration
@@ -141,6 +143,81 @@ fileRouter.get('/access/:filename', async (req, res) => {
 fileRouter.get('/', authenticateToken, FileController.getAllFiles);
 fileRouter.get('/search', authenticateToken, FileController.searchFiles);
 fileRouter.get('/stats', authenticateToken, FileController.getFileStats);
+
+// Partition-specific file listing
+fileRouter.get('/partition/:partitionName', authenticateToken, async (req, res) => {
+    try {
+        const { partitionName } = req.params;
+
+        if (!req.user || !req.user._id) {
+            return res.status(401).json({
+                success: false,
+                message: 'User authentication required'
+            });
+        }
+
+        // Extract query parameters
+        const page = parseInt(req.query.page as string) || 1;
+        const limit = parseInt(req.query.limit as string) || 10;
+        const mimetype = req.query.mimetype as string;
+        const tags = req.query.tags as string;
+        const sortBy = req.query.sortBy as string;
+        const sortOrder = req.query.sortOrder as 'asc' | 'desc';
+
+        const tagArray = tags ? tags.split(',').map(tag => tag.trim()) : undefined;
+
+        const queryOptions = {
+            page,
+            limit,
+            mimetype,
+            tags: tagArray,
+            partition: partitionName,
+            sortBy,
+            sortOrder,
+            userId: req.user._id.toString()
+        };
+
+        const result = await FileService.getFiles(queryOptions);
+
+        // Add URLs to files
+        const filesWithUrls = result.files.map((file: any) => {
+            try {
+                if (file.r2Url) {
+                    return {
+                        ...file,
+                        url: file.r2Url,
+                        storedInR2: true
+                    };
+                } else {
+                    const filename = extractFilename(file.path);
+                    return {
+                        ...file,
+                        url: getFileUrl(filename, req),
+                        storedInR2: false
+                    };
+                }
+            } catch (err) {
+                console.error('Error adding URL to file:', err);
+                return file;
+            }
+        });
+
+        res.status(200).json({
+            success: true,
+            message: `Files from partition '${partitionName}' retrieved successfully`,
+            data: filesWithUrls,
+            pagination: result.pagination
+        });
+
+    } catch (error) {
+        console.error('Error getting files by partition:', error);
+        res.status(500).json({
+            success: false,
+            message: 'Error getting files by partition',
+            error: error instanceof Error ? error.message : 'Unknown error'
+        });
+    }
+});
 
 // Trash operations (protected) - must be before /:id routes
 fileRouter.get('/trash', authenticateToken, FileController.getTrashFiles);

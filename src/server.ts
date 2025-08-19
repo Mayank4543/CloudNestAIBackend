@@ -5,6 +5,7 @@ import dotenv from 'dotenv';
 import path from 'path';
 import fileRouter from './routes/fileRouter';
 import authRoutes from './routes/authRoutes';
+import partitionRoutes from './routes/partitionRoutes';
 import semanticSearchRoutes from './routes/semanticSearchRoutes';
 import summaryRoutes from './routes/summaryRoutes';
 import { getStaticServePath, ensureUploadDir } from './utils/uploadPaths';
@@ -63,6 +64,7 @@ console.log(`🌐 Files accessible at: /uploads/<filename>`);
 // Routes
 app.use('/api/files', fileRouter);
 app.use('/api/auth', authRoutes);
+app.use('/api/partitions', partitionRoutes);
 app.use('/api/semantic', semanticSearchRoutes);
 app.use('/api/summary', summaryRoutes);
 

@@ -8,6 +8,7 @@ export interface IFile extends Document {
     size: number;
     path: string;
     userId: mongoose.Types.ObjectId;
+    partition: string; // Storage partition name (e.g., 'personal', 'work')
     isPublic: boolean;
     createdAt: Date;
     tags: string[];
@@ -52,6 +53,14 @@ const FileSchema: Schema = new Schema({
         type: Schema.Types.ObjectId,
         ref: 'User',
         required: true
+    },
+    partition: {
+        type: String,
+        required: true,
+        trim: true,
+        default: 'personal',
+        minlength: [1, 'Partition name must be at least 1 character long'],
+        maxlength: [50, 'Partition name cannot exceed 50 characters']
     },
     isPublic: {
         type: Boolean,
@@ -122,6 +131,8 @@ FileSchema.index({ userId: 1, isPublic: 1 });
 FileSchema.index({ isDeleted: 1 });
 FileSchema.index({ deletedAt: 1 });
 FileSchema.index({ userId: 1, isDeleted: 1 }); // For user's files and trash queries
+FileSchema.index({ userId: 1, partition: 1 }); // For partition-specific queries
+FileSchema.index({ partition: 1 }); // For partition statistics
 
 // Note: To create the vector index for embeddings, run this command in MongoDB Atlas:
 /*

@@ -17,6 +17,7 @@ export interface CreateFileData {
   size: number;
   path?: string;  // Optional now, since we might use buffer
   userId: string;
+  partition?: string; // Storage partition name
   isPublic?: boolean;
   tags?: string[];
   r2Key?: string; // Optional field to store R2 object key
@@ -29,6 +30,7 @@ export interface FileQueryOptions {
   limit?: number;
   mimetype?: string;
   tags?: string[];
+  partition?: string; // Filter by partition
   sortBy?: string;
   sortOrder?: 'asc' | 'desc';
   searchKeyword?: string;
@@ -393,6 +395,9 @@ export class FileService {
         ? fileData.tags.filter(tag => tag.trim().length > 0).map(tag => tag.trim().toLowerCase())
         : [];
 
+      // Set default partition if not specified
+      const partitionName = fileData.partition || 'personal';
+
       let r2Url = '';
       let r2ObjectKey = '';
       let virtualPath = fileData.path || ''; // Keep original path as fallback
@@ -473,6 +478,7 @@ export class FileService {
         size: fileData.size,
         path: virtualPath, // Use virtual path for consistency
         userId: new Types.ObjectId(fileData.userId),
+        partition: partitionName, // Set partition
         isPublic: fileData.isPublic || false,
         tags: cleanTags,
         r2Url: r2Url || null, // Always store R2 URL, null if not available
@@ -537,6 +543,15 @@ export class FileService {
 
       // Save the file
       const savedFile = await newFile.save();
+
+      // Update partition usage after successful save
+      try {
+        const { updatePartitionUsage } = require('../middleware/quotaMiddleware');
+        await updatePartitionUsage(fileData.userId, partitionName, fileData.size, true);
+      } catch (usageError) {
+        console.error('Failed to update partition usage:', usageError);
+        // Non-critical error - file is already saved, so continue
+      }
 
       // Process file for semantic search if it's a supported type
       const fileExt = path.extname(fileData.originalname).toLowerCase();
@@ -639,6 +654,11 @@ export class FileService {
       // Filter by mimetype (case-insensitive partial match)
       if (options.mimetype) {
         filter.mimetype = { $regex: options.mimetype.trim(), $options: 'i' };
+      }
+
+      // Filter by partition (if specified)
+      if (options.partition) {
+        filter.partition = options.partition.trim();
       }
 
       // Filter by tags (match any of the provided tags)
@@ -793,6 +813,17 @@ export class FileService {
         { new: true }
       ).select('-__v');
 
+      // Update partition usage (decrease when moving to trash)
+      if (updatedFile) {
+        try {
+          const { updatePartitionUsage } = require('../middleware/quotaMiddleware');
+          await updatePartitionUsage(userId, file.partition, file.size, false);
+        } catch (usageError) {
+          console.error('Failed to update partition usage on delete:', usageError);
+          // Non-critical error - file is already marked as deleted
+        }
+      }
+
       return updatedFile;
 
     } catch (error) {
@@ -923,6 +954,17 @@ export class FileService {
         },
         { new: true }
       ).select('-__v');
+
+      // Update partition usage (increase when restoring from trash)
+      if (restoredFile) {
+        try {
+          const { updatePartitionUsage } = require('../middleware/quotaMiddleware');
+          await updatePartitionUsage(userId, restoredFile.partition, restoredFile.size, true);
+        } catch (usageError) {
+          console.error('Failed to update partition usage on restore:', usageError);
+          // Non-critical error - file is already restored
+        }
+      }
 
       return restoredFile;
 
@@ -1400,6 +1442,32 @@ export class FileService {
 
     } catch (error) {
       throw new Error(`Failed to get files by mimetype: ${error instanceof Error ? error.message : 'Unknown error'}`);
+    }
+  }
+
+  /**
+   * Get files by partition
+   * @param partition - Partition name to filter by
+   * @param userId - User ID to filter by
+   * @param options - Additional query options
+   * @returns Promise<PaginatedFiles> - Paginated files of specified partition
+   */
+  public static async getFilesByPartition(partition: string, userId: string, options: FileQueryOptions = {}): Promise<PaginatedFiles> {
+    try {
+      if (!Types.ObjectId.isValid(userId)) {
+        throw new Error('Invalid user ID format');
+      }
+
+      const partitionOptions = {
+        ...options,
+        partition,
+        userId
+      };
+
+      return this.getFiles(partitionOptions);
+
+    } catch (error) {
+      throw new Error(`Failed to get files by partition: ${error instanceof Error ? error.message : 'Unknown error'}`);
     }
   }
 
