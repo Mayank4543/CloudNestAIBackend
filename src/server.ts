@@ -49,8 +49,8 @@ app.use(cors({
     maxAge: 86400 // CORS preflight cache (24 hours)
 }));
 
-app.use(express.json({ limit: '50mb' }));
-app.use(express.urlencoded({ extended: true, limit: '50mb' }));
+app.use(express.json({ limit: '2gb' }));
+app.use(express.urlencoded({ extended: true, limit: '2gb' }));
 
 // Static file serving for uploaded files with custom middleware
 app.use('/uploads', serveUploadedFile);

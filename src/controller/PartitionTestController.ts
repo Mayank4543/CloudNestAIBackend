@@ -47,7 +47,7 @@ export class PartitionTestController {
                 const user = await User.findById(req.user._id);
                 const hasPersonal = user?.storagePartitions.some(p => p.name === 'personal');
                 const hasWork = user?.storagePartitions.some(p => p.name === 'work');
-                
+
                 testResults.push({
                     test: 'Default Partitions Check',
                     status: (hasPersonal && hasWork) ? 'PASS' : 'FAIL',
@@ -78,7 +78,7 @@ export class PartitionTestController {
                     // Simulate quota check without actually uploading
                     const user = await User.findById(req.user._id);
                     const personalPartition = user?.storagePartitions.find(p => p.name === 'personal');
-                    
+
                     if (personalPartition) {
                         const wouldExceedQuota = (personalPartition.used + testFile.size) > personalPartition.quota;
                         testResults.push({
@@ -172,14 +172,14 @@ export class PartitionTestController {
             try {
                 const testSize = 1024 * 1024; // 1MB
                 await updatePartitionUsage(req.user._id.toString(), 'personal', testSize, true);
-                
+
                 // Get updated stats
                 const statsAfterIncrease = await getPartitionStats(req.user._id.toString());
                 const personalPartition = statsAfterIncrease.find((p: any) => p.name === 'personal');
-                
+
                 // Decrease it back
                 await updatePartitionUsage(req.user._id.toString(), 'personal', testSize, false);
-                
+
                 const statsAfterDecrease = await getPartitionStats(req.user._id.toString());
                 const personalPartitionAfter = statsAfterDecrease.find((p: any) => p.name === 'personal');
 
@@ -381,8 +381,8 @@ export class PartitionTestController {
                     totalQuota: partitionStats.reduce((sum: number, p: any) => sum + p.quota, 0),
                     totalUsed: partitionStats.reduce((sum: number, p: any) => sum + p.used, 0),
                     totalAvailable: partitionStats.reduce((sum: number, p: any) => sum + p.available, 0),
-                    overallUsagePercentage: partitionStats.length > 0 
-                        ? ((partitionStats.reduce((sum: number, p: any) => sum + p.used, 0) / 
+                    overallUsagePercentage: partitionStats.length > 0
+                        ? ((partitionStats.reduce((sum: number, p: any) => sum + p.used, 0) /
                             partitionStats.reduce((sum: number, p: any) => sum + p.quota, 0)) * 100).toFixed(2)
                         : '0.00'
                 },

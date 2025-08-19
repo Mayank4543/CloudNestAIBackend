@@ -76,7 +76,7 @@ export const checkQuota = async (
 
         // Check if adding this file would exceed the quota
         const wouldExceedQuota = (partition.used + fileSize) > partition.quota;
-        
+
         if (wouldExceedQuota) {
             const availableSpace = Math.max(0, partition.quota - partition.used);
             const fileSizeMB = (fileSize / (1024 * 1024)).toFixed(2);
@@ -149,8 +149,8 @@ export const updatePartitionUsage = async (
 
         // Update usage
         const currentUsed = user.storagePartitions[partitionIndex].used;
-        const newUsed = increment 
-            ? currentUsed + fileSize 
+        const newUsed = increment
+            ? currentUsed + fileSize
             : Math.max(0, currentUsed - fileSize);
 
         user.storagePartitions[partitionIndex].used = newUsed;
