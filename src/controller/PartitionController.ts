@@ -45,6 +45,98 @@ export class PartitionController {
     }
 
     /**
+     * Get partition usage statistics with detailed information
+     * @param req - Express request object
+     * @param res - Express response object
+     */
+    public static async getPartitionUsageStats(req: Request, res: Response): Promise<void> {
+        try {
+            // Check if user is authenticated
+            if (!req.user || !req.user._id) {
+                res.status(401).json({
+                    success: false,
+                    message: 'User authentication required'
+                });
+                return;
+            }
+
+            // Get user with partitions
+            const user = await User.findById(req.user._id);
+            if (!user) {
+                res.status(404).json({
+                    success: false,
+                    message: 'User not found'
+                });
+                return;
+            }
+
+            // Calculate statistics for each partition
+            const partitionsWithStats = await Promise.all(
+                user.storagePartitions.map(async (partition) => {
+                    // Get file count for this partition
+                    const totalFiles = await File.countDocuments({
+                        userId: req.user!._id,
+                        partition: partition.name,
+                        isDeleted: { $ne: true }
+                    });
+
+                    // Calculate percentage used
+                    const percentageUsed = partition.quota > 0 ? (partition.used / partition.quota) : 0;
+
+                    // Format sizes
+                    const formatSize = (bytes: number): string => {
+                        if (bytes < 1024) return bytes + ' B';
+                        else if (bytes < 1048576) return (bytes / 1024).toFixed(1) + ' KB';
+                        else if (bytes < 1073741824) return (bytes / 1048576).toFixed(1) + ' MB';
+                        else return (bytes / 1073741824).toFixed(1) + ' GB';
+                    };
+
+                    return {
+                        name: partition.name,
+                        quota: partition.quota,
+                        used: partition.used,
+                        stats: {
+                            totalFiles,
+                            percentageUsed,
+                            formattedUsed: formatSize(partition.used),
+                            formattedQuota: formatSize(partition.quota),
+                            isNearLimit: percentageUsed >= 0.8, // 80% warning
+                            isOverLimit: percentageUsed >= 1.0  // 100% over limit
+                        }
+                    };
+                })
+            );
+
+            // Calculate total statistics
+            const totalUsed = user.storagePartitions.reduce((sum, p) => sum + p.used, 0);
+            const totalQuota = user.storagePartitions.reduce((sum, p) => sum + p.quota, 0);
+            const totalFiles = await File.countDocuments({
+                userId: req.user._id,
+                isDeleted: { $ne: true }
+            });
+
+            res.status(200).json({
+                success: true,
+                message: 'Partition usage statistics retrieved successfully',
+                data: {
+                    partitions: partitionsWithStats,
+                    totalUsed,
+                    totalQuota,
+                    totalFiles
+                }
+            });
+
+        } catch (error) {
+            console.error('Error getting partition usage stats:', error);
+            res.status(500).json({
+                success: false,
+                message: 'Error retrieving partition usage statistics',
+                error: error instanceof Error ? error.message : 'Unknown error'
+            });
+        }
+    }
+
+    /**
      * Create a new storage partition for the authenticated user
      * @param req - Express request object
      * @param res - Express response object
@@ -303,7 +395,7 @@ export class PartitionController {
             // If force deleting, move files to 'personal' partition or delete them
             if (force === 'true' && filesInPartition > 0) {
                 const targetPartition = user.storagePartitions.find(p => p.name === 'personal');
-                
+
                 if (targetPartition && partitionName !== 'personal') {
                     // Move files to personal partition and update usage
                     await File.updateMany(
@@ -317,7 +409,7 @@ export class PartitionController {
 
                     // Update partition usage (move used space from deleted partition to personal)
                     targetPartition.used += partition.used;
-                    
+
                     console.log(`Moved ${filesInPartition} files from '${partitionName}' to 'personal' partition`);
                 } else {
                     // If deleting 'personal' partition or no personal partition exists, soft delete all files
@@ -332,7 +424,7 @@ export class PartitionController {
                             deletedAt: new Date()
                         }
                     );
-                    
+
                     console.log(`Soft deleted ${filesInPartition} files from '${partitionName}' partition`);
                 }
             }
@@ -586,7 +678,7 @@ export class PartitionController {
             for (const [partitionName, sizeToRemove] of Object.entries(partitionUsageChanges)) {
                 const sourcePartitionIndex = user.storagePartitions.findIndex(p => p.name === partitionName);
                 if (sourcePartitionIndex !== -1) {
-                    user.storagePartitions[sourcePartitionIndex].used = Math.max(0, 
+                    user.storagePartitions[sourcePartitionIndex].used = Math.max(0,
                         user.storagePartitions[sourcePartitionIndex].used - sizeToRemove
                     );
                 }

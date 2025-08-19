@@ -17,6 +17,13 @@ router.use(authenticateToken);
 router.get('/', PartitionController.getUserPartitions);
 
 /**
+ * @route GET /api/partitions/usage
+ * @desc Get partition usage statistics for the authenticated user
+ * @access Private (requires JWT token)
+ */
+router.get('/usage', PartitionController.getPartitionUsageStats);
+
+/**
  * @route POST /api/partitions
  * @desc Create a new partition for the authenticated user
  * @access Private (requires JWT token)
