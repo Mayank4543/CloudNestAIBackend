@@ -1,8 +1,10 @@
+// Import necessary modules and middleware
 import express from 'express';
 import multer from 'multer';
 import path from 'path';
 import fs from 'fs';
 import jwt from 'jsonwebtoken';
+import cors from 'cors';
 import { FileController } from '../controller/FileController';
 import { authenticateToken } from '../middleware/authMiddleware';
 import { checkQuota } from '../middleware/quotaMiddleware';
@@ -15,6 +17,37 @@ ensureUploadDir();
 
 // Create a new router instance
 const fileRouter = express.Router();
+
+// Configure CORS specifically for file operations
+const uploadCorsOptions = {
+    origin: function (origin: string | undefined, callback: (err: Error | null, allow?: boolean) => void) {
+        const allowedOrigins = [
+            'https://cloud-nest-ai-frontend.vercel.app',
+            'https://cloudnestai.vercel.app',
+            'http://localhost:3000',
+            'http://127.0.0.1:3000'
+        ];
+
+        // Allow requests with no origin (like mobile apps, Postman, etc.)
+        if (!origin) return callback(null, true);
+
+        if (allowedOrigins.includes(origin) || process.env.NODE_ENV === 'development') {
+            console.log(`✅ File upload CORS allowed for origin: ${origin}`);
+            callback(null, true);
+        } else {
+            console.log(`❌ File upload CORS blocked for origin: ${origin}`);
+            callback(new Error('Not allowed by CORS'));
+        }
+    },
+    credentials: true,
+    methods: ['GET', 'POST', 'PUT', 'DELETE', 'PATCH', 'OPTIONS'],
+    allowedHeaders: ['Content-Type', 'Authorization', 'X-Requested-With'],
+    exposedHeaders: ['Content-Range', 'X-Content-Range'],
+    maxAge: 86400
+};
+
+// Apply CORS to all file routes
+fileRouter.use(cors(uploadCorsOptions));
 
 // Configure multer for memory storage instead of disk storage
 // This way files are kept in memory and uploaded directly to R2 without saving to disk
@@ -52,8 +85,29 @@ const upload = multer({
 });
 
 // Simple routes - specific paths first, param routes last
+// Handle preflight OPTIONS requests explicitly
+fileRouter.options('/upload', (req, res) => {
+    res.setHeader('Access-Control-Allow-Origin', req.headers.origin || '*');
+    res.setHeader('Access-Control-Allow-Methods', 'POST, OPTIONS');
+    res.setHeader('Access-Control-Allow-Headers', 'Content-Type, Authorization, X-Requested-With');
+    res.setHeader('Access-Control-Allow-Credentials', 'true');
+    res.setHeader('Access-Control-Max-Age', '86400');
+    res.status(200).end();
+});
+
 fileRouter.post('/upload', authenticateToken, upload.single('file'), checkQuota, FileController.uploadFile);
 fileRouter.get('/debug', FileController.getDebugInfo); // Debug endpoint
+
+// Add CORS test endpoint
+fileRouter.get('/cors-test', (req, res) => {
+    res.status(200).json({
+        success: true,
+        message: 'CORS test successful',
+        origin: req.headers.origin || 'No origin header',
+        userAgent: req.headers['user-agent'] || 'No user agent',
+        timestamp: new Date().toISOString()
+    });
+});
 
 // Import proxyR2File middleware and CORS configuration
 import { proxyR2File, proxyFileCors } from '../middleware/r2ProxyMiddleware';
@@ -245,21 +299,22 @@ fileRouter.post('/trash/cleanup', authenticateToken, async (req, res) => {
     }
 });
 
-// New dedicated endpoint for getting file info as JSON (never redirects)
-fileRouter.get('/:id/info', authenticateToken, FileController.getFileInfo);
-
 // Test AI tagging functionality (protected)
 fileRouter.post('/test-ai-tagging', authenticateToken, FileController.testAITagging);
 // Scan file for sensitive data before making public (protected)
 fileRouter.post('/:id/scan-sensitive', authenticateToken, FileController.scanForSensitiveData);
 // Summarize file content using AI (protected)
 // fileRouter.post('/:id/summarize', authenticateToken, FileController.summarizeFile);
+
+// IMPORTANT: Specific routes with parameters must come BEFORE generic param routes
+fileRouter.get('/download/:id', authenticateToken, FileController.downloadFile);
+fileRouter.get('/:id/info', authenticateToken, FileController.getFileInfo);
+
 // Generic param routes MUST come last
 fileRouter.get('/:id', authenticateToken, FileController.getFileById);
 fileRouter.delete('/:id', authenticateToken, FileController.deleteFile);
 fileRouter.put('/:id/tags', authenticateToken, FileController.updateFileTags);
 fileRouter.put('/:id/public', authenticateToken, FileController.updateFilePublicStatus);
-
 // Error handling middleware
 fileRouter.use((error: any, req: any, res: any, next: any) => {
     console.error('File route error:', error);

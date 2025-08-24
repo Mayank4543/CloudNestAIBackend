@@ -204,11 +204,29 @@ export class FileController {
             });
 
         } catch (error) {
-            console.error('Error uploading file:', error);
+            console.error('❌ Error uploading file:', error);
+            console.error('❌ Request headers:', req.headers);
+            console.error('❌ Request body:', req.body);
+            console.error('❌ File info:', req.file ? {
+                fieldname: req.file.fieldname,
+                originalname: req.file.originalname,
+                mimetype: req.file.mimetype,
+                size: req.file.size
+            } : 'No file in request');
+
             res.status(500).json({
                 success: false,
                 message: 'Error uploading file',
-                error: error instanceof Error ? error.message : 'Unknown error'
+                error: error instanceof Error ? error.message : 'Unknown error',
+                ...(process.env.NODE_ENV === 'development' && {
+                    debug: {
+                        hasFile: !!req.file,
+                        hasUser: !!req.user,
+                        contentType: req.headers['content-type'],
+                        userAgent: req.headers['user-agent'],
+                        origin: req.headers['origin']
+                    }
+                })
             });
         }
     }
@@ -1232,6 +1250,78 @@ export class FileController {
             res.status(500).json({
                 success: false,
                 message: 'Error scanning file for sensitive data',
+                error: error instanceof Error ? error.message : 'Unknown error'
+            });
+        }
+    }
+
+    // Download file by ID
+    public static async downloadFile(req: Request, res: Response): Promise<void> {
+        try {
+            const { id } = req.params;
+            const userId = req.user?.id;
+
+            if (!userId) {
+                res.status(401).json({
+                    success: false,
+                    message: 'Authentication required'
+                });
+                return;
+            }
+
+            if (!id) {
+                res.status(400).json({
+                    success: false,
+                    message: 'File ID is required'
+                });
+                return;
+            }
+
+            // Get file metadata from database
+            const file = await FileService.getFileById(id, userId);
+
+            if (!file) {
+                res.status(404).json({
+                    success: false,
+                    message: 'File not found'
+                });
+                return;
+            }
+
+            // Check if user owns the file
+            if (file.userId.toString() !== userId) {
+                res.status(403).json({
+                    success: false,
+                    message: 'Access denied'
+                });
+                return;
+            }
+
+            // Check if file has R2 object key
+            if (!file.r2ObjectKey) {
+                res.status(400).json({
+                    success: false,
+                    message: 'File not available for download'
+                });
+                return;
+            }
+
+            // Download file from R2 storage
+            const fileBuffer = await FileService.downloadFileFromR2(file.r2ObjectKey);
+
+            // Set appropriate headers for file download
+            res.setHeader('Content-Type', file.mimetype || 'application/octet-stream');
+            res.setHeader('Content-Disposition', `attachment; filename="${file.originalname}"`);
+            res.setHeader('Content-Length', fileBuffer.length.toString());
+
+            // Send file buffer
+            res.send(fileBuffer);
+
+        } catch (error) {
+            console.error('Error downloading file:', error);
+            res.status(500).json({
+                success: false,
+                message: 'Error downloading file',
                 error: error instanceof Error ? error.message : 'Unknown error'
             });
         }

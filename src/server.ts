@@ -25,12 +25,16 @@ const MONGODB_URI = process.env.MONGODB_URI || 'mongodb://localhost:27017/cloudn
 console.log(`🌍 Environment: ${process.env.NODE_ENV || 'development'}`);
 console.log(`📂 Working directory: ${process.cwd()}`);
 console.log(`📁 Upload directory will be: ${getStaticServePath()}`);
+console.log(`🔗 CORS Origins: ${process.env.CORS_ORIGIN || 'Using defaults'}`);
 
 const allowedOrigins = process.env.CORS_ORIGIN?.split(',') || [
     'https://cloud-nest-ai-frontend.vercel.app',
+    'https://cloudnestai.vercel.app', // Add this if it's another domain
     'http://localhost:3000',
     'http://127.0.0.1:3000'
 ];
+
+console.log(`✅ Allowed CORS origins:`, allowedOrigins);
 
 app.use(cors({
     origin: function (origin, callback) {
@@ -39,18 +43,25 @@ app.use(cors({
 
         // Allow if origin is in the allowed list or if in development
         if (allowedOrigins.includes(origin) || process.env.NODE_ENV === 'development') {
+            console.log(`✅ CORS allowed for origin: ${origin}`);
             callback(null, true);
         } else {
-            console.log(`CORS blocked for origin: ${origin}`);
+            console.log(`❌ CORS blocked for origin: ${origin}`);
             callback(new Error('Not allowed by CORS'));
         }
     },
     credentials: true,
+    methods: ['GET', 'POST', 'PUT', 'DELETE', 'PATCH', 'OPTIONS'],
+    allowedHeaders: ['Content-Type', 'Authorization', 'X-Requested-With'],
+    exposedHeaders: ['Content-Range', 'X-Content-Range'],
     maxAge: 86400 // CORS preflight cache (24 hours)
 }));
 
 app.use(express.json({ limit: '2gb' }));
 app.use(express.urlencoded({ extended: true, limit: '2gb' }));
+
+// Note: Removed global OPTIONS handler to fix path-to-regexp error
+// Route-specific OPTIONS handlers are used instead
 
 // Static file serving for uploaded files with custom middleware
 app.use('/uploads', serveUploadedFile);
@@ -69,7 +80,13 @@ app.use('/api/semantic', semanticSearchRoutes);
 app.use('/api/summary', summaryRoutes);
 
 app.get('/health', (_req, res) => {
-    res.status(200).json({ success: true, message: 'OK' });
+    res.setHeader('Access-Control-Allow-Origin', '*');
+    res.status(200).json({
+        success: true,
+        message: 'OK',
+        timestamp: new Date().toISOString(),
+        cors: 'enabled'
+    });
 });
 
 app.use((_req, res) => {
