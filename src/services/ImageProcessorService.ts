@@ -108,17 +108,26 @@ export class ImageProcessorService {
    */
   private static async preprocessImage(buffer: Buffer): Promise<Buffer> {
     try {
-      // Use Sharp to preprocess the image
-      const processedBuffer = await sharp(buffer)
-        .grayscale() // Convert to grayscale for better OCR
-        .normalize() // Normalize contrast
-        .sharpen() // Sharpen the image
-        .png() // Convert to PNG format
-        .toBuffer();
-      
-      return processedBuffer;
+      // Try using Sharp to preprocess the image
+      try {
+        const processedBuffer = await sharp(buffer)
+          .grayscale() // Convert to grayscale for better OCR
+          .normalize() // Normalize contrast
+          .sharpen() // Sharpen the image
+          .png() // Convert to PNG format
+          .toBuffer();
+        
+        return processedBuffer;
+      } catch (sharpError) {
+        // If Sharp fails, log it and use fallback method
+        console.warn('Sharp preprocessing failed, using fallback method:', sharpError);
+        
+        // Fallback: For environments where Sharp might not work properly
+        // Just return the original buffer - Tesseract will still work but with reduced accuracy
+        return buffer;
+      }
     } catch (error) {
-      console.warn('Image preprocessing failed, using original:', error);
+      console.warn('Image preprocessing completely failed, using original:', error);
       return buffer;
     }
   }
