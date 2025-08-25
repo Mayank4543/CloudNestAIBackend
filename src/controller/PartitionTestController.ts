@@ -334,7 +334,7 @@ export class PartitionTestController {
                 }
             ]);
 
-            // Get overall statistics
+            // 
             const overallStats = await File.aggregate([
                 {
                     $match: {
