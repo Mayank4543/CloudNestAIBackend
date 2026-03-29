@@ -103,7 +103,7 @@ app.use((err: any, _req: express.Request, res: express.Response) => {
 
 const connectToMongoDB = async () => {
     await mongoose.connect(MONGODB_URI);
-    console.log('✅ Connected to MongoDB');
+    console.log(' Connected to MongoDB');
 };
 
 const startServer = async () => {
@@ -112,7 +112,7 @@ const startServer = async () => {
 
         // Initialize the embedding model in the background
         EmbeddingService.initializeModel().catch(error => {
-            console.error('❌ Failed to initialize embedding model:', error);
+            console.error('Failed to initialize embedding model:', error);
             // Don't crash the server if model fails to load
         });
 
