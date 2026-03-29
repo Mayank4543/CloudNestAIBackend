@@ -127,7 +127,7 @@ export class AIService {
     private static async callOpenRouterAPIForSummary(prompt: string, apiKey: string): Promise<string> {
         try {
             // Use a better model for summary generation (still free)
-            const model = 'mistralai/mistral-7b-instruct'; // Free model with good comprehension
+            const model = 'meta-llama/llama-3-8b-instruct'; // Free model with good comprehension
 
             const response = await axios.post(
                 this.OPENROUTER_API_URL,
@@ -187,7 +187,7 @@ export class AIService {
     private static async callOpenRouterAPI(prompt: string, apiKey: string): Promise<string> {
         try {
             // Use a free model - you can change this to other free models
-            const model = 'mistralai/mistral-7b-instruct'; // Free model
+            const model = 'meta-llama/llama-3-8b-instruct'; // Free model
 
             const response = await axios.post(
                 this.OPENROUTER_API_URL,
@@ -454,7 +454,7 @@ Tags:`;
      */
     public static getAvailableModels(): string[] {
         return [
-            'mistralai/mistral-7b-instruct', // Free
+           
             'meta-llama/llama-3-8b-instruct', // Free
             'google/gemma-2-9b-it', // Free
             'microsoft/phi-3-mini-4k-instruct', // Free
