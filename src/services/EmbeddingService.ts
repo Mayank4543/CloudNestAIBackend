@@ -1,7 +1,3 @@
-import { pipeline } from '@xenova/transformers';
-import fs from 'fs';
-import path from 'path';
-import { extname } from 'path';
 import { TextExtractorService } from './TextExtractorService';
 
 /**
@@ -15,6 +11,7 @@ export class EmbeddingService {
 
   /**
    * Initializes the embedding pipeline using the Hugging Face model
+   * Uses dynamic import() because @xenova/transformers is ESM-only
    * @returns Promise<void>
    */
   public static async initializeModel(): Promise<void> {
@@ -31,7 +28,10 @@ export class EmbeddingService {
     this.initPromise = new Promise<void>(async (resolve, reject) => {
       try {
         console.log(`📚 Initializing embedding model: ${this.MODEL_NAME}`);
-        this.pipeline = await pipeline('feature-extraction', this.MODEL_NAME);
+        // Dynamic import() required because @xenova/transformers is ESM-only
+        // and cannot be require()'d from CommonJS
+        const { pipeline: transformersPipeline } = await import('@xenova/transformers');
+        this.pipeline = await transformersPipeline('feature-extraction', this.MODEL_NAME);
         console.log('✅ Embedding model loaded successfully');
         this.isInitializing = false;
         resolve();

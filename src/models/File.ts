@@ -103,13 +103,11 @@ const FileSchema: Schema = new Schema({
     },
     isDeleted: {
         type: Boolean,
-        default: false,
-        index: true // Index for faster queries
+        default: false
     },
     deletedAt: {
         type: Date,
-        default: null,
-        index: true // Index for trash cleanup queries
+        default: null
     },
     originalPath: {
         type: String, // Store original path for restoration
