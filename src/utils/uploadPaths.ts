@@ -40,8 +40,9 @@ export const ensureUploadDir = (): void => {
         console.log(`✅ Upload directory is writable: ${uploadDir}`);
 
     } catch (error) {
-        console.error(`❌ Error with upload directory ${uploadDir}:`, error);
-        throw new Error(`Failed to setup upload directory: ${uploadDir}`);
+        // On serverless platforms (Vercel, Lambda), filesystem is read-only
+        // Since files are stored in Cloudflare R2, this is not fatal
+        console.warn(`⚠️ Upload directory ${uploadDir} is not writable. Files will be stored in R2.`);
     }
 };
 
